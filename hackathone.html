@@ -1,0 +1,2389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PathNetra - Pollution-Smart Maps</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        
+        * {
+            font-family: 'Inter', sans-serif;
+        }
+        
+        .gradient-bg {
+            background: linear-gradient(135deg, #10b981 0%, #059669 50%, #047857 100%);
+        }
+        
+        .gradient-text {
+            background: linear-gradient(135deg, #10b981, #3b82f6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .glass-card {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            transition: all 0.3s ease;
+        }
+
+        .glass-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.05);
+        }
+        
+        .dark .glass-card {
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .pulse-animation {
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .aqi-excellent { background: linear-gradient(135deg, #10b981, #34d399); }
+        .aqi-good { background: linear-gradient(135deg, #84cc16, #a3e635); }
+        .aqi-moderate { background: linear-gradient(135deg, #f59e0b, #fbbf24); }
+        .aqi-poor { background: linear-gradient(135deg, #ef4444, #f87171); }
+        .aqi-severe { background: linear-gradient(135deg, #7c2d12, #dc2626); }
+        
+        .route-card {
+            transition: all 0.3s ease;
+        }
+        
+        .route-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+        }
+        
+        .dashboard-sidebar {
+            transform: translateX(-100%);
+            transition: transform 0.3s ease-in-out;
+        }
+        
+        .dashboard-sidebar.open {
+            transform: translateX(0);
+        }
+        
+        .overlay {
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease-in-out;
+        }
+        
+        .overlay.active {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        /* Page transition styles */
+        .page {
+            display: none;
+        }
+        .page.active {
+            display: block;
+        }
+
+        /* Animated particles */
+        .particle {
+            position: absolute;
+            width: 8px;
+            height: 8px;
+            background: rgba(255, 255, 255, 0.6);
+            border-radius: 50%;
+            animation: float 6s ease-in-out infinite;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0px) rotate(0deg); opacity: 0.6; }
+            50% { transform: translateY(-20px) rotate(180deg); opacity: 1; }
+        }
+
+        /* AQI level colors for background */
+        .aqi-excellent-bg { background: linear-gradient(135deg, #10b981, #34d399); }
+        .aqi-good-bg { background: linear-gradient(135deg, #84cc16, #a3e635); }
+        .aqi-moderate-bg { background: linear-gradient(135deg, #f59e0b, #fbbf24); }
+        .aqi-poor-bg { background: linear-gradient(135deg, #ef4444, #f87171); }
+        .aqi-severe-bg { background: linear-gradient(135deg, #7c2d12, #dc2626); }
+    </style>
+</head>
+<body class="bg-gray-50 dark:bg-gray-900 transition-colors duration-300">
+
+    <!-- Login Page (Default Entry Point) -->
+    <div id="loginPage" class="min-h-screen flex items-center justify-center bg-gradient-to-br from-green-50 to-blue-100 dark:from-gray-800 dark:to-gray-900 p-4">
+        <div class="max-w-md w-full bg-white dark:bg-gray-800 rounded-xl shadow-2xl p-8 space-y-6">
+            <div class="text-center">
+                <div class="flex items-center justify-center space-x-3 mb-4">
+                    <svg width="48" height="48" viewBox="0 0 48 48" class="drop-shadow-lg">
+                        <path d="M24 4C16 4 10 10 10 18C10 26 16 32 24 40C32 32 38 26 38 18C38 10 32 4 24 4Z" fill="#10b981"/>
+                        <circle cx="20" cy="16" r="2" fill="#ffffff" opacity="0.9"/>
+                        <circle cx="28" cy="16" r="2" fill="#ffffff" opacity="0.9"/>
+                        <circle cx="24" cy="24" r="3" fill="#ffffff"/>
+                    </svg>
+                    <div>
+                         <h1 class="text-3xl font-bold gradient-text">PathNetra</h1>
+                         <p class="text-gray-500 dark:text-gray-400">Breathe Sense</p>
+                    </div>
+                </div>
+                <h2 class="text-2xl font-bold text-gray-800 dark:text-white">Welcome Back!</h2>
+                <p class="text-gray-600 dark:text-gray-400 mt-2">Log in to find your healthiest route.</p>
+            </div>
+            
+            <form id="loginForm" class="space-y-6">
+                <div>
+                    <label for="email" class="text-sm font-medium text-gray-700 dark:text-gray-300">Email Address</label>
+                    <input type="email" id="email" name="email" required value="user@pathnetra.com" class="mt-1 block w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-white focus:ring-green-500 focus:border-green-500">
+                </div>
+                <div>
+                    <label for="password" class="text-sm font-medium text-gray-700 dark:text-gray-300">Password</label>
+                    <input type="password" id="password" name="password" required value="password123" class="mt-1 block w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-white focus:ring-green-500 focus:border-green-500">
+                </div>
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center">
+                        <input id="remember-me" name="remember-me" type="checkbox" class="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded">
+                        <label for="remember-me" class="ml-2 block text-sm text-gray-900 dark:text-gray-300">Remember me</label>
+                    </div>
+                    <div class="text-sm">
+                        <a href="#" class="font-medium text-green-600 hover:text-green-500">Forgot password?</a>
+                    </div>
+                </div>
+                <div>
+                    <button type="submit" class="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-lg font-medium text-white gradient-bg hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-opacity">
+                        Login
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Landing Page with Location Setup (Hidden by default) -->
+    <div id="landingPage" class="hidden min-h-screen relative overflow-hidden">
+        <!-- Animated Background -->
+        <div id="animatedBackground" class="absolute inset-0 bg-gradient-to-br from-green-400 via-blue-500 to-purple-600 transition-all duration-3000">
+            <div class="absolute inset-0 bg-black bg-opacity-20"></div>
+            <!-- Floating particles -->
+            <div class="absolute inset-0">
+                <div class="particle" style="top: 20%; left: 10%; animation-delay: 0s;"></div>
+                <div class="particle" style="top: 60%; left: 80%; animation-delay: 2s;"></div>
+                <div class="particle" style="top: 40%; left: 30%; animation-delay: 4s;"></div>
+                <div class="particle" style="top: 80%; left: 60%; animation-delay: 1s;"></div>
+                <div class="particle" style="top: 10%; left: 70%; animation-delay: 3s;"></div>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="relative z-10 min-h-screen flex items-center justify-center p-4">
+            <div class="max-w-4xl w-full text-center text-white">
+                <!-- Logo and Title -->
+                <div class="mb-8">
+                    <div class="flex items-center justify-center space-x-4 mb-6">
+                        <svg width="64" height="64" viewBox="0 0 48 48" class="drop-shadow-2xl">
+                            <path d="M24 4C16 4 10 10 10 18C10 26 16 32 24 40C32 32 38 26 38 18C38 10 32 4 24 4Z" fill="#ffffff" opacity="0.9"/>
+                            <circle cx="20" cy="16" r="2" fill="#10b981" opacity="0.9"/>
+                            <circle cx="28" cy="16" r="2" fill="#10b981" opacity="0.9"/>
+                            <circle cx="24" cy="24" r="3" fill="#10b981"/>
+                            <line x1="20" y1="16" x2="24" y2="24" stroke="#10b981" stroke-width="1.5" opacity="0.7"/>
+                            <line x1="28" y1="16" x2="24" y2="24" stroke="#10b981" stroke-width="1.5" opacity="0.7"/>
+                            <path d="M12 30 Q18 26 24 30 Q30 34 36 30" stroke="#10b981" stroke-width="2" fill="none" opacity="0.6"/>
+                        </svg>
+                        <div>
+                            <h1 class="text-5xl md:text-6xl font-bold mb-2">PathNetra</h1>
+                            <p class="text-xl opacity-90">Breathe Sense</p>
+                        </div>
+                    </div>
+                    <h2 class="text-3xl md:text-4xl font-bold mb-4">Pollution-Smart Navigation</h2>
+                    <p class="text-lg md:text-xl opacity-90 max-w-2xl mx-auto">
+                        Find the healthiest routes through Indore with real-time air quality data and AI-powered recommendations.
+                    </p>
+                </div>
+
+                <!-- Live AQI Display -->
+                <div id="liveAqiCard" class="glass-card rounded-2xl p-8 mb-8 max-w-md mx-auto">
+                    <div class="text-center">
+                        <div class="text-sm opacity-80 mb-2">Current Air Quality</div>
+                        <div id="liveAqiValue" class="text-6xl font-bold mb-2">--</div>
+                        <div id="liveAqiLevel" class="text-xl font-semibold mb-4">Loading...</div>
+                        <div id="liveAqiLocation" class="text-sm opacity-80">📍 Getting your location...</div>
+                    </div>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="space-y-4">
+                    <button id="getLocationPermission" class="w-full max-w-md mx-auto flex items-center justify-center space-x-3 bg-white/20 backdrop-blur-sm border border-white/30 rounded-xl px-8 py-4 text-lg font-semibold hover:bg-white/30 transition-all duration-300">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                        </svg>
+                        <span>Allow Location Access</span>
+                    </button>
+                    
+                    <button id="viewDashboard" class="w-full max-w-md mx-auto flex items-center justify-center space-x-3 bg-green-500/80 backdrop-blur-sm border border-green-400/50 rounded-xl px-8 py-4 text-lg font-semibold hover:bg-green-500 transition-all duration-300 opacity-0 pointer-events-none">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                        </svg>
+                        <span>View Dashboard</span>
+                    </button>
+                </div>
+
+                <!-- Features Preview -->
+                <div class="mt-12 grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto">
+                    <div class="glass-card rounded-xl p-6 text-center">
+                        <div class="text-3xl mb-3">🗺️</div>
+                        <h3 class="text-lg font-semibold mb-2">Smart Routes</h3>
+                        <p class="text-sm opacity-80">AI-optimized paths with minimal pollution exposure</p>
+                    </div>
+                    <div class="glass-card rounded-xl p-6 text-center">
+                        <div class="text-3xl mb-3">📊</div>
+                        <h3 class="text-lg font-semibold mb-2">Live AQI</h3>
+                        <p class="text-sm opacity-80">Real-time air quality monitoring for your location</p>
+                    </div>
+                    <div class="glass-card rounded-xl p-6 text-center">
+                        <div class="text-3xl mb-3">💚</div>
+                        <h3 class="text-lg font-semibold mb-2">Health First</h3>
+                        <p class="text-sm opacity-80">Personalized recommendations for your wellbeing</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="appWrapper" class="hidden">
+        <div id="appContainer">
+            <div id="wasteScannerModal" class="overlay fixed inset-0 bg-black bg-opacity-50 z-50">
+                <div class="flex items-center justify-center min-h-screen p-4">
+                    <div class="bg-white dark:bg-gray-800 rounded-xl max-w-md w-full p-6 shadow-2xl">
+                        <div class="flex items-center justify-between mb-6">
+                            <h3 class="text-xl font-bold text-gray-800 dark:text-white">AI Waste Scanner</h3>
+                            <button id="closeWasteScanner" class="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+                                <svg class="w-5 h-5 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                                </svg>
+                            </button>
+                        </div>
+                        
+                        <div class="space-y-4">
+                             <div id="analysisSection" class="hidden">
+                                 <div class="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4 mb-4">
+                                     <div class="flex items-center mb-2">
+                                         <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mr-2"></div>
+                                         <span class="text-blue-700 dark:text-blue-300 font-medium">AI Analyzing Waste...</span>
+                                     </div>
+                                     <div class="text-sm text-blue-600 dark:text-blue-400">Identifying waste type and location</div>
+                                 </div>
+                             </div>
+                            
+                             <div id="resultsSection" class="hidden">
+                                 <div class="bg-green-50 dark:bg-green-900/20 rounded-lg p-4 mb-4">
+                                     <h4 class="font-semibold text-green-700 dark:text-green-300 mb-2">✅ Waste Identified</h4>
+                                     <div class="space-y-2 text-sm">
+                                         <p><strong>Type:</strong> <span id="wasteType">Plastic bottles & food waste</span></p>
+                                         <p><strong>Location:</strong> <span id="wasteLocation">Near Rajwada, Indore</span></p>
+                                         <p><strong>Priority:</strong> <span id="wastePriority" class="text-orange-600 dark:text-orange-400">Medium</span></p>
+                                         <p><strong>Report ID:</strong> <span id="reportId" class="font-mono">#WR2024001</span></p>
+                                     </div>
+                                 </div>
+                                
+                                 <div class="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4 mb-4">
+                                     <h4 class="font-semibold text-blue-700 dark:text-blue-300 mb-2">📤 Auto-Sent to Municipal Corporation</h4>
+                                     <div class="text-sm text-blue-600 dark:text-blue-400">
+                                         <p>✓ Report sent to Indore Municipal Corporation</p>
+                                         <p>✓ GPS coordinates attached</p>
+                                         <p>✓ AI waste classification included</p>
+                                         <p class="font-semibold mt-2">Expected cleanup: Within 24 hours</p>
+                                     </div>
+                                 </div>
+                                
+                                 <button id="trackReport" class="w-full bg-green-500 hover:bg-green-600 text-white py-3 rounded-lg font-semibold transition-colors">
+                                     📍 Track Cleanup Status
+                                 </button>
+                             </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <input type="file" id="wasteImageInput" accept="image/*" capture="environment" class="hidden">
+
+            <div id="dashboardOverlay" class="overlay fixed inset-0 bg-black bg-opacity-50 z-40"></div>
+            <div id="dashboardSidebar" class="dashboard-sidebar fixed left-0 top-0 h-full w-80 bg-white dark:bg-gray-800 shadow-xl z-50 flex flex-col">
+                <div class="p-6 border-b border-gray-200 dark:border-gray-700">
+                    <div class="flex items-center justify-between">
+                        <h3 class="text-xl font-bold text-gray-800 dark:text-white">Dashboard</h3>
+                        <button id="closeDashboard" class="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+                            <svg class="w-5 h-5 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="p-6 space-y-6 flex-1 overflow-y-auto">
+                    <div class="space-y-4">
+                        <h4 class="font-semibold text-gray-800 dark:text-white">Today's Summary</h4>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div class="bg-green-50 dark:bg-green-900/20 p-4 rounded-lg">
+                                <div class="text-2xl font-bold text-green-600 dark:text-green-400">3</div>
+                                <div class="text-sm text-gray-600 dark:text-gray-400">Clean Routes</div>
+                            </div>
+                            <div class="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg">
+                                <div class="text-2xl font-bold text-blue-600 dark:text-blue-400">45</div>
+                                <div class="text-sm text-gray-600 dark:text-gray-400">AQI Saved</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="space-y-4">
+                        <h4 class="font-semibold text-gray-800 dark:text-white">Recent Routes</h4>
+                        <div class="space-y-3">
+                            <div class="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                                <div>
+                                    <div class="font-medium text-gray-800 dark:text-white">Rajwada → Airport</div>
+                                    <div class="text-sm text-gray-600 dark:text-gray-400">AQI: 52 (Clean route)</div>
+                                </div>
+                                <div class="w-3 h-3 bg-green-500 rounded-full"></div>
+                            </div>
+                            <div class="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                                <div>
+                                    <div class="font-medium text-gray-800 dark:text-white">Vijay Nagar → Palasia</div>
+                                    <div class="text-sm text-gray-600 dark:text-gray-400">AQI: 38 (Excellent)</div>
+                                </div>
+                                <div class="w-3 h-3 bg-green-500 rounded-full"></div>
+                            </div>
+                            <div class="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                                <div>
+                                    <div class="font-medium text-gray-800 dark:text-white">Sarafa → Rajwada</div>
+                                    <div class="text-sm text-gray-600 dark:text-gray-400">AQI: 89 (Moderate)</div>
+                                </div>
+                                <div class="w-3 h-3 bg-yellow-500 rounded-full"></div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="space-y-4">
+                        <h4 class="font-semibold text-gray-800 dark:text-white">Quick Actions</h4>
+                        <div class="space-y-2">
+                            <button class="w-full text-left p-3 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg hover:from-green-600 hover:to-green-700 transition-colors">
+                                🏠 Navigate Home (Clean Route)
+                            </button>
+                            <button class="w-full text-left p-3 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-colors">
+                                💼 Navigate to Office
+                            </button>
+                            <button class="w-full text-left p-3 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-lg hover:from-purple-600 hover:to-purple-700 transition-colors">
+                                🚴 Find Cycling Route
+                            </button>
+                            <button id="openWasteScanner" class="w-full text-left p-3 bg-gradient-to-r from-red-500 to-orange-600 text-white rounded-lg hover:from-red-600 hover:to-orange-700 transition-colors">
+                                📸 Scan & Report Waste
+                            </button>
+                            <button id="reportPollution" class="w-full text-left p-3 bg-gradient-to-r from-pink-500 to-rose-600 text-white rounded-lg hover:from-pink-600 hover:to-rose-700 transition-colors">
+                                🚨 Report Pollution Source
+                            </button>
+                            <button id="communityEvents" class="w-full text-left p-3 bg-gradient-to-r from-emerald-500 to-green-600 text-white rounded-lg hover:from-emerald-600 hover:to-green-700 transition-colors">
+                                🌱 Community Events
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="space-y-4">
+                        <h4 class="font-semibold text-gray-800 dark:text-white">Health Insights</h4>
+                        <div class="bg-gradient-to-r from-green-50 to-blue-50 dark:from-green-900/20 dark:to-blue-900/20 p-4 rounded-lg">
+                            <div class="text-sm text-gray-700 dark:text-gray-300">
+                                <p class="mb-2">🌟 You've avoided <strong>78% pollution</strong> this week!</p>
+                                <p>💡 Best time to travel: 6-8 AM (lowest AQI)</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="space-y-4">
+                        <h4 class="font-semibold text-gray-800 dark:text-white">Today's Health Recommendations</h4>
+                        <div id="healthRecommendations" class="space-y-3">
+                            <!-- Dynamic health recommendations will be inserted here -->
+                        </div>
+                    </div>
+
+                    <div class="space-y-4">
+                        <h4 class="font-semibold text-gray-800 dark:text-white">Health Center</h4>
+                        <div class="space-y-3">
+                            <button id="setupHealthProfile" class="w-full text-left p-3 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-lg hover:from-purple-600 hover:to-purple-700 transition-colors">
+                                👤 Setup Health Profile
+                            </button>
+                            <button id="trackSymptoms" class="w-full text-left p-3 bg-gradient-to-r from-indigo-500 to-indigo-600 text-white rounded-lg hover:from-indigo-600 hover:to-indigo-700 transition-colors">
+                                📊 Track Symptoms
+                            </button>
+                            <button id="viewHealthHistory" class="w-full text-left p-3 bg-gradient-to-r from-teal-500 to-teal-600 text-white rounded-lg hover:from-teal-600 hover:to-teal-700 transition-colors">
+                                📈 Health History
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="space-y-4">
+                        <h4 class="font-semibold text-gray-800 dark:text-white">Eco Achievements</h4>
+                        <div class="bg-gradient-to-r from-yellow-50 to-orange-50 dark:from-yellow-900/20 dark:to-orange-900/20 p-4 rounded-lg">
+                            <div class="flex items-center justify-between mb-2">
+                                <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Eco Points</span>
+                                <span id="ecoPoints" class="text-2xl font-bold text-yellow-600 dark:text-yellow-400">1,250</span>
+                            </div>
+                            <div class="text-xs text-gray-600 dark:text-gray-400 mb-2">This week: +150 points</div>
+                            <div class="flex items-center space-x-2">
+                                <div class="flex-1 bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                                    <div class="bg-gradient-to-r from-yellow-400 to-orange-500 h-2 rounded-full" style="width: 75%"></div>
+                                </div>
+                                <span class="text-xs text-gray-500">75% to next level</span>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-2">
+                            <button id="viewAchievements" class="w-full text-left p-2 bg-gradient-to-r from-amber-500 to-yellow-600 text-white rounded-lg hover:from-amber-600 hover:to-yellow-700 transition-colors text-sm">
+                                🏆 Achievements
+                            </button>
+                            <button id="enableNotifications" class="w-full text-left p-2 bg-gradient-to-r from-blue-500 to-cyan-600 text-white rounded-lg hover:from-blue-600 hover:to-cyan-700 transition-colors text-sm">
+                                🔔 Notifications
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <header class="gradient-bg text-white shadow-lg">
+                <div class="container mx-auto px-4 py-4">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center justify-between w-full">
+                            <div class="flex items-center space-x-3">
+                                <button id="dashboardToggle" class="p-2 rounded-lg bg-white/20 hover:bg-white/30 transition-colors">
+                                    <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                                        <circle cx="3" cy="3" r="1.5"/>
+                                        <circle cx="3" cy="10" r="1.5"/>
+                                        <circle cx="3" cy="17" r="1.5"/>
+                                    </svg>
+                                </button>
+                                
+                                <div class="relative">
+                                    <svg width="48" height="48" viewBox="0 0 48 48" class="drop-shadow-lg">
+                                        <path d="M24 4C16 4 10 10 10 18C10 26 16 32 24 40C32 32 38 26 38 18C38 10 32 4 24 4Z" fill="#34d399" opacity="0.8"/>
+                                        <circle cx="20" cy="16" r="2" fill="#ffffff" opacity="0.9"/>
+                                        <circle cx="28" cy="16" r="2" fill="#ffffff" opacity="0.9"/>
+                                        <circle cx="24" cy="24" r="3" fill="#ffffff"/>
+                                        <line x1="20" y1="16" x2="24" y2="24" stroke="#ffffff" stroke-width="1.5" opacity="0.7"/>
+                                        <line x1="28" y1="16" x2="24" y2="24" stroke="#ffffff" stroke-width="1.5" opacity="0.7"/>
+                                        <path d="M12 30 Q18 26 24 30 Q30 34 36 30" stroke="#ffffff" stroke-width="2" fill="none" opacity="0.6"/>
+                                    </svg>
+                                    <div class="absolute -top-1 -right-1 w-3 h-3 bg-blue-400 rounded-full pulse-animation"></div>
+                                </div>
+                                <div>
+                                    <h1 class="text-2xl font-bold">PathNetra</h1>
+                                    <p class="text-sm opacity-90">Breathe Sense</p>
+                                </div>
+                            </div>
+                        </div>
+                        <button id="darkModeToggleApp" class="p-2 rounded-lg bg-white/20 hover:bg-white/30 transition-colors">
+                            <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                                <path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"></path>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            </header>
+
+            <div id="mainContent">
+                <main>
+                    <!-- Current Location Section -->
+                    <section class="py-8 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+                        <div class="container mx-auto px-4">
+                            <div class="max-w-4xl mx-auto">
+                                <h2 class="text-2xl font-bold text-gray-800 dark:text-white mb-6">Current Location</h2>
+                                <div class="bg-gradient-to-r from-green-50 to-blue-50 dark:from-green-900/20 dark:to-blue-900/20 rounded-xl p-6">
+                                    <div class="flex items-center justify-between">
+                                        <div class="flex items-center space-x-4">
+                                            <div class="w-12 h-12 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center">
+                                                <svg class="w-6 h-6 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                                                </svg>
+                                            </div>
+                                            <div>
+                                                <h3 class="text-lg font-semibold text-gray-800 dark:text-white">Your Location</h3>
+                                                <p id="currentLocationText" class="text-gray-600 dark:text-gray-400">Click to detect your current location</p>
+                                            </div>
+                                        </div>
+                                        <button id="detectLocation" class="px-6 py-3 bg-green-500 hover:bg-green-600 text-white rounded-lg font-semibold transition-colors flex items-center space-x-2">
+                                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                                            </svg>
+                                            <span>Detect Location</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="py-16 bg-gradient-to-br from-green-50 to-blue-50 dark:from-gray-800 dark:to-gray-900">
+                        <div class="container mx-auto px-4 text-center">
+                            <h2 class="text-4xl md:text-6xl font-bold gradient-text mb-6">
+                                Pollution-Smart Navigation
+                            </h2>
+                            <p class="text-xl text-gray-600 dark:text-gray-300 mb-8 max-w-3xl mx-auto">
+                                A pollution-smart navigation system that combines real-time AQI data, traffic conditions, and AI predictions to suggest healthier routes for Indore city.
+                            </p>
+                            <div class="flex flex-wrap justify-center gap-4 mb-8">
+                                <div id="liveAqiButton" class="glass-card rounded-lg p-4 text-center cursor-pointer w-48">
+                                    <div class="text-2xl font-bold text-green-600 dark:text-green-400">Live AQI</div>
+                                    <div class="text-sm text-gray-600 dark:text-gray-400">Real-time monitoring</div>
+                                </div>
+                                <div id="aiPredictionButton" class="glass-card rounded-lg p-4 text-center cursor-pointer w-48">
+                                    <div class="text-2xl font-bold text-blue-600 dark:text-blue-400">AI Predictions</div>
+                                    <div class="text-sm text-gray-600 dark:text-gray-400">Smart route optimization</div>
+                                </div>
+                                 <div id="healthAlertButton" class="glass-card rounded-lg p-4 text-center cursor-pointer w-48">
+                                    <div class="text-2xl font-bold text-orange-500 dark:text-orange-400">Health Alert</div>
+                                    <div class="text-sm text-gray-600 dark:text-gray-400">Advisory: High</div>
+                                </div>
+                                <div id="healthScoreButton" class="glass-card rounded-lg p-4 text-center cursor-pointer w-48">
+                                    <div class="text-2xl font-bold text-purple-600 dark:text-purple-400">Health Score</div>
+                                    <div class="text-sm text-gray-600 dark:text-gray-400">Exposure tracking</div>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+                    
+                    <section class="py-16 bg-white dark:bg-gray-800">
+                        <div class="container mx-auto px-4">
+                            <h3 class="text-3xl font-bold text-center mb-8 text-gray-800 dark:text-white">Interactive Pollution Map - Indore</h3>
+                            
+                            <div class="max-w-4xl mx-auto mb-8">
+                                <div class="bg-gray-50 dark:bg-gray-700 rounded-xl p-6">
+                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                                        <div>
+                                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">From</label>
+                                            <div class="flex gap-2">
+                                                <select id="startLocation" class="flex-1 p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-800 dark:text-white">
+                                                    <option value="rajwada">Rajwada (City Center)</option>
+                                                    <option value="vijaynagar">Vijay Nagar</option>
+                                                    <option value="palasia">Palasia Square</option>
+                                                    <option value="sarafa">Sarafa Bazaar</option>
+                                                    <option value="airport">Indore Airport</option>
+                                                    <option value="current">📍 Current Location</option>
+                                                </select>
+                                                <button id="getCurrentLocation" class="px-4 py-3 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-semibold transition-colors flex items-center space-x-2">
+                                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
+                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                                                    </svg>
+                                                    <span class="hidden sm:inline">Get Location</span>
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">To</label>
+                                            <select id="endLocation" class="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-800 dark:text-white">
+                                                <option value="airport">Indore Airport</option>
+                                                <option value="rajwada">Rajwada (City Center)</option>
+                                                <option value="vijaynagar">Vijay Nagar</option>
+                                                <option value="palasia">Palasia Square</option>
+                                                <option value="sarafa">Sarafa Bazaar</option>
+                                                <option value="current">📍 Current Location</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <button id="findRoute" class="w-full gradient-bg text-white py-3 px-6 rounded-lg font-semibold hover:opacity-90 transition-opacity">
+                                        Find Healthiest Route
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="max-w-6xl mx-auto">
+                                <div id="map" class="h-96 rounded-xl shadow-lg mb-6"></div>
+                                
+                                <div id="routeComparison" class="grid grid-cols-1 md:grid-cols-3 gap-6 hidden">
+                                    <div class="route-card bg-red-50 dark:bg-red-900/20 border-2 border-red-200 dark:border-red-800 rounded-xl p-6">
+                                        <div class="flex items-center mb-4">
+                                            <div class="w-4 h-4 bg-red-500 rounded-full mr-3"></div>
+                                            <h4 class="text-lg font-bold text-red-700 dark:text-red-300">Fastest Route</h4>
+                                        </div>
+                                        <div class="space-y-2">
+                                            <p class="text-sm text-gray-600 dark:text-gray-400">Distance: <span id="fastestDistance" class="font-semibold">0.0 km</span></p>
+                                            <p class="text-sm text-gray-600 dark:text-gray-400">Time: <span id="fastestTime" class="font-semibold">0 min</span></p>
+                                            <p class="text-sm text-gray-600 dark:text-gray-400">Pollution Exposure: <span id="fastestPollution" class="font-semibold text-red-600">High (AQI 95)</span></p>
+                                            <div class="mt-3">
+                                                <div class="text-xs text-gray-500 mb-1">Health Impact:</div>
+                                                <div class="flex items-center space-x-2">
+                                                    <div class="w-2 h-2 bg-red-500 rounded-full"></div>
+                                                    <span class="text-xs text-red-600">Not recommended for sensitive groups</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <button id="navigateFastest" class="mt-4 w-full gradient-bg text-white py-2 px-4 rounded-lg font-semibold hover:opacity-90 transition-opacity flex items-center justify-center space-x-2">
+                                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>
+                                            <span>Navigate</span>
+                                        </button>
+                                    </div>
+                                    
+                                    <div class="route-card bg-green-50 dark:bg-green-900/20 border-2 border-green-200 dark:border-green-800 rounded-xl p-6">
+                                        <div class="flex items-center mb-4">
+                                            <div class="w-4 h-4 bg-green-500 rounded-full mr-3"></div>
+                                            <h4 class="text-lg font-bold text-green-700 dark:text-green-300">Safest Route (AI Optimized)</h4>
+                                        </div>
+                                        <div class="space-y-2">
+                                            <p class="text-sm text-gray-600 dark:text-gray-400">Distance: <span id="safestDistance" class="font-semibold">0.0 km</span></p>
+                                            <p class="text-sm text-gray-600 dark:text-gray-400">Time: <span id="safestTime" class="font-semibold">0 min</span></p>
+                                            <p class="text-sm text-gray-600 dark:text-gray-400">Pollution Exposure: <span id="safestPollution" class="font-semibold text-green-600">Low (AQI 52)</span></p>
+                                            <div class="mt-3">
+                                                <div class="text-xs text-gray-500 mb-1">Health Impact:</div>
+                                                <div class="flex items-center space-x-2">
+                                                    <div class="w-2 h-2 bg-green-500 rounded-full"></div>
+                                                    <span class="text-xs text-green-600">Safe for all groups</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <button id="navigateSafest" class="mt-4 w-full gradient-bg text-white py-2 px-4 rounded-lg font-semibold hover:opacity-90 transition-opacity flex items-center justify-center space-x-2">
+                                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>
+                                            <span>Navigate</span>
+                                        </button>
+                                    </div>
+
+                                    <div class="route-card bg-blue-50 dark:bg-blue-900/20 border-2 border-blue-200 dark:border-blue-800 rounded-xl p-6">
+                                        <div class="flex items-center mb-4">
+                                            <div class="w-4 h-4 bg-blue-500 rounded-full mr-3"></div>
+                                            <h4 class="text-lg font-bold text-blue-700 dark:text-blue-300">Balanced Route</h4>
+                                        </div>
+                                        <div class="space-y-2">
+                                            <p class="text-sm text-gray-600 dark:text-gray-400">Distance: <span id="balancedDistance" class="font-semibold">0.0 km</span></p>
+                                            <p class="text-sm text-gray-600 dark:text-gray-400">Time: <span id="balancedTime" class="font-semibold">0 min</span></p>
+                                            <p class="text-sm text-gray-600 dark:text-gray-400">Pollution Exposure: <span id="balancedPollution" class="font-semibold text-blue-600">Moderate (AQI 75)</span></p>
+                                            <div class="mt-3">
+                                                <div class="text-xs text-gray-500 mb-1">Health Impact:</div>
+                                                <div class="flex items-center space-x-2">
+                                                    <div class="w-2 h-2 bg-blue-500 rounded-full"></div>
+                                                    <span class="text-xs text-blue-600">Good balance of speed and health</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <button id="navigateBalanced" class="mt-4 w-full gradient-bg text-white py-2 px-4 rounded-lg font-semibold hover:opacity-90 transition-opacity flex items-center justify-center space-x-2">
+                                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>
+                                            <span>Navigate</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+                    
+                    <section class="py-12 bg-white dark:bg-gray-800">
+                        <div class="container mx-auto px-4">
+                            <h3 class="text-3xl font-bold text-center mb-8 text-gray-800 dark:text-white">
+                                Real-time AQI Monitoring - Indore
+                            </h3>
+                            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                                <div class="aqi-excellent rounded-xl p-6 text-white text-center">
+                                    <h4 class="font-semibold mb-2">Vijay Nagar</h4>
+                                    <div class="text-3xl font-bold mb-1">42</div>
+                                    <div class="text-sm opacity-90">Good</div>
+                                    <div class="text-xs mt-2">AI Prediction: ↓ 38 in 2hrs</div>
+                                </div>
+                                <div class="aqi-good rounded-xl p-6 text-white text-center">
+                                    <h4 class="font-semibold mb-2">Rajwada</h4>
+                                    <div class="text-3xl font-bold mb-1">68</div>
+                                    <div class="text-sm opacity-90">Moderate</div>
+                                    <div class="text-xs mt-2">AI Prediction: ↑ 72 in 2hrs</div>
+                                </div>
+                                <div class="aqi-moderate rounded-xl p-6 text-white text-center">
+                                    <h4 class="font-semibold mb-2">Palasia</h4>
+                                    <div class="text-3xl font-bold mb-1">89</div>
+                                    <div class="text-sm opacity-90">Moderate</div>
+                                    <div class="text-xs mt-2">AI Prediction: ↓ 82 in 2hrs</div>
+                                </div>
+                                <div class="aqi-poor rounded-xl p-6 text-white text-center">
+                                    <h4 class="font-semibold mb-2">Sarafa Bazaar</h4>
+                                    <div class="text-3xl font-bold mb-1">124</div>
+                                    <div class="text-sm opacity-90">Poor</div>
+                                    <div class="text-xs mt-2">AI Prediction: ↓ 115 in 2hrs</div>
+                                </div>
+                            </div>
+                            
+                            <div class="bg-gradient-to-r from-blue-500 to-purple-600 rounded-xl p-6 text-white">
+                                <h4 class="text-xl font-bold mb-3 flex items-center">
+                                    <svg class="w-6 h-6 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                        <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                    </svg>
+                                    AI Pollution Insights
+                                </h4>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <p class="text-sm opacity-90 mb-2">🌟 Best time to travel today: 6:00 AM - 8:00 AM</p>
+                                        <p class="text-sm opacity-90 mb-2">⚠️ Avoid Sarafa-Rajwada route between 4-7 PM</p>
+                                    </div>
+                                    <div>
+                                        <p class="text-sm opacity-90 mb-2">🍃 Cleanest route: Via Vijay Nagar (+12 min, -60% pollution)</p>
+                                        <p class="text-sm opacity-90">📈 Tomorrow's forecast: AQI expected to improve by 15%</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="py-16 bg-gray-50 dark:bg-gray-900">
+                        <div class="container mx-auto px-4">
+                            <h3 class="text-3xl font-bold text-center mb-12 text-gray-800 dark:text-white">Core Features</h3>
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+                                <div id="joggingModeButton" class="bg-white dark:bg-gray-800 rounded-xl p-8 shadow-lg hover:shadow-xl transition-shadow cursor-pointer">
+                                    <div class="text-4xl mb-4">🚶</div>
+                                    <h4 class="text-xl font-bold mb-3 text-gray-800 dark:text-white">Jogging/Cycling Mode</h4>
+                                    <p class="text-gray-600 dark:text-gray-300">Suggests clean-air routes through parks and less congested roads in Indore.</p>
+                                </div>
+                                <div id="commuteModeButton" class="bg-white dark:bg-gray-800 rounded-xl p-8 shadow-lg hover:shadow-xl transition-shadow cursor-pointer">
+                                    <div class="text-4xl mb-4">🚗</div>
+                                    <h4 class="text-xl font-bold mb-3 text-gray-800 dark:text-white">Commute Mode</h4>
+                                    <p class="text-gray-600 dark:text-gray-300">Guides daily office-goers via healthier roads with real-time pollution data.</p>
+                                </div>
+                                <div id="openWasteScannerCard" class="bg-white dark:bg-gray-800 rounded-xl p-8 shadow-lg hover:shadow-xl transition-shadow cursor-pointer">
+                                    <div class="text-4xl mb-4">📸</div>
+                                    <h4 class="text-xl font-bold mb-3 text-gray-800 dark:text-white">AI Waste Scanner</h4>
+                                    <p class="text-gray-600 dark:text-gray-300">Scan waste with camera, AI identifies type, auto-reports to municipal corporation for 24hr cleanup.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+                </main>
+            </div>
+
+            <div id="pageContainer">
+
+                <section id="aqiPage" class="page hidden bg-gray-50 dark:bg-gray-900 min-h-screen">
+                    <div class="container mx-auto p-4 sm:p-6">
+                        <header class="flex items-center justify-between mb-6">
+                            <button class="back-button p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
+                                <svg class="w-6 h-6 text-gray-700 dark:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+                            </button>
+                            <h1 class="text-2xl font-bold text-gray-800 dark:text-white">Live Air Quality - Indore</h1>
+                            <div class="w-8"></div> </header>
+
+                        <div id="aqiPageContent" class="space-y-6">
+                            <div id="aqiPageLoading" class="text-center p-12">
+                                <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                                <p class="text-gray-600 dark:text-gray-400">Fetching live data...</p>
+                            </div>
+
+                            <div id="aqiPageError" class="hidden text-center p-12 bg-red-50 dark:bg-red-900/20 rounded-lg">
+                                <p class="text-red-500">Could not fetch live data. Please add your WAQI API Token in the script or try again later.</p>
+                            </div>
+                            
+                            <div id="aqiPageData" class="hidden">
+                                <div class="text-center mb-6 bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md">
+                                    <p class="text-gray-600 dark:text-gray-400">Overall Air Quality Index</p>
+                                    <div id="mainAqiValue" class="text-7xl font-bold text-gray-800 dark:text-white">--</div>
+                                    <div id="mainAqiLevel" class="text-xl font-semibold px-4 py-1 rounded-full inline-block mt-2">--</div>
+                                    <p id="aqiStation" class="text-xs text-center text-gray-500 mt-4">Station: --</p>
+                                </div>
+                                <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 text-center">
+                                   <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm">
+                                      <p class="text-sm text-gray-600 dark:text-gray-400">PM2.5</p>
+                                      <p id="aqiPm25" class="text-2xl font-bold text-gray-800 dark:text-white">--</p>
+                                   </div>
+                                   <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm">
+                                      <p class="text-sm text-gray-600 dark:text-gray-400">PM10</p>
+                                      <p id="aqiPm10" class="text-2xl font-bold text-gray-800 dark:text-white">--</p>
+                                   </div>
+                                   <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm">
+                                      <p class="text-sm text-gray-600 dark:text-gray-400">Ozone (O₃)</p>
+                                      <p id="aqiO3" class="text-2xl font-bold text-gray-800 dark:text-white">--</p>
+                                   </div>
+                                   <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm">
+                                      <p class="text-sm text-gray-600 dark:text-gray-400">NO₂</p>
+                                      <p id="aqiNo2" class="text-2xl font-bold text-gray-800 dark:text-white">--</p>
+                                   </div>
+                                   <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm">
+                                      <p class="text-sm text-gray-600 dark:text-gray-400">SO₂</p>
+                                      <p id="aqiSo2" class="text-2xl font-bold text-gray-800 dark:text-white">--</p>
+                                   </div>
+                                   <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm">
+                                      <p class="text-sm text-gray-600 dark:text-gray-400">CO</p>
+                                      <p id="aqiCo" class="text-2xl font-bold text-gray-800 dark:text-white">--</p>
+                                   </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section id="predictionPage" class="page hidden bg-gray-50 dark:bg-gray-900 min-h-screen">
+                     <div class="container mx-auto p-4 sm:p-6">
+                         <header class="flex items-center justify-between mb-6">
+                             <button class="back-button p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
+                                 <svg class="w-6 h-6 text-gray-700 dark:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+                             </button>
+                             <h1 class="text-2xl font-bold text-gray-800 dark:text-white">🤖 AI Pollution Forecast</h1>
+                             <div class="w-8"></div> </header>
+                        
+                         <div class="space-y-6">
+                             <div class="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg text-center">
+                                 <p class="text-gray-600 dark:text-gray-400">City-wide forecast for next 6 hours</p>
+                                 <p id="predictionSummary" class="text-lg font-semibold text-blue-700 dark:text-blue-300">AQI will improve by 12%</p>
+                             </div>
+                            
+                             <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md">
+                                 <h4 class="font-semibold text-gray-800 dark:text-white mb-3">Area-specific Predictions (Next 3 Hours)</h4>
+                                 <div id="areaForecasts" class="space-y-3">
+                                     </div>
+                             </div>
+
+                             <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md h-96">
+                                 <h4 class="font-semibold text-gray-800 dark:text-white mb-3">24-Hour AQI Trend</h4>
+                                 <canvas id="predictionChart"></canvas>
+                             </div>
+                         </div>
+                     </div>
+                </section>
+                
+                <section id="healthAlertPage" class="page hidden bg-gray-50 dark:bg-gray-900 min-h-screen">
+                    <div class="container mx-auto p-4 sm:p-6">
+                        <header class="flex items-center justify-between mb-6">
+                            <button class="back-button p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
+                                <svg class="w-6 h-6 text-gray-700 dark:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+                            </button>
+                            <h1 class="text-2xl font-bold text-gray-800 dark:text-white">Health Alerts & Advisory</h1>
+                            <div class="w-8"></div> </header>
+                        <div class="space-y-6">
+                            <div class="bg-orange-100 dark:bg-orange-900/30 border-l-4 border-orange-500 text-orange-700 dark:text-orange-300 p-6 rounded-r-lg shadow-md">
+                                <div class="flex">
+                                    <div class="py-1"><svg class="fill-current h-6 w-6 text-orange-500 mr-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M10 18a8 8 0 100-16 8 8 0 000 16zM9 9a1 1 0 011-1h.01a1 1 0 110 2H10a1 1 0 01-1-1zm1-4a1 1 0 11-2 0 1 1 0 012 0z"/></svg></div>
+                                    <div>
+                                        <p class="font-bold text-xl">High Alert: AQI is Unhealthy for Sensitive Groups</p>
+                                        <p class="text-sm mt-1">Current City Average AQI: <strong>124 (Poor)</strong></p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md">
+                                <h3 class="text-xl font-semibold text-gray-800 dark:text-white mb-4">Recommendations</h3>
+                                <div class="space-y-4">
+                                    <div>
+                                        <h4 class="font-bold text-green-600 dark:text-green-400">General Population</h4>
+                                        <p class="text-gray-600 dark:text-gray-300">Reduce prolonged or heavy exertion outdoors. Consider rescheduling strenuous activities.</p>
+                                    </div>
+                                    <div class="border-t dark:border-gray-700 pt-4">
+                                        <h4 class="font-bold text-orange-600 dark:text-orange-400">Sensitive Groups (Children, Elderly, People with lung/heart disease)</h4>
+                                        <p class="text-gray-600 dark:text-gray-300">Avoid prolonged or heavy exertion outdoors. It's recommended to stay indoors and keep activity levels low.</p>
+                                    </div>
+                                    <div class="border-t dark:border-gray-700 pt-4">
+                                        <h4 class="font-bold text-red-600 dark:text-red-400">Outdoor Workers</h4>
+                                        <p class="text-gray-600 dark:text-gray-300">Take more breaks and reduce intensity of outdoor work. Wear a mask (N95 recommended) if possible.</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md">
+                                <h3 class="text-xl font-semibold text-gray-800 dark:text-white mb-4">Health Tips</h3>
+                                 <ul class="list-disc list-inside space-y-2 text-gray-600 dark:text-gray-300">
+                                      <li>Keep windows and doors closed. Use air purifiers if available.</li>
+                                      <li>Stay hydrated by drinking plenty of water.</li>
+                                      <li>Avoid burning anything, such as candles or incense.</li>
+                                      <li>Monitor for symptoms like coughing, shortness of breath, or chest pain. Consult a doctor if they persist.</li>
+                                 </ul>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section id="healthScorePage" class="page hidden bg-gray-50 dark:bg-gray-900 min-h-screen">
+                    <div class="container mx-auto p-4 sm:p-6">
+                        <header class="flex items-center justify-between mb-6">
+                            <button class="back-button p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
+                                <svg class="w-6 h-6 text-gray-700 dark:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+                            </button>
+                            <h1 class="text-2xl font-bold text-gray-800 dark:text-white">💜 Your Health Score</h1>
+                            <div class="w-8"></div> </header>
+                        <div class="space-y-6">
+                            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                                <div class="lg:col-span-1 bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md text-center flex flex-col justify-center">
+                                    <h3 class="text-lg font-semibold text-gray-800 dark:text-white mb-2">Overall Health Score</h3>
+                                    <p class="text-7xl font-bold gradient-text mb-2">88</p>
+                                    <p class="font-semibold text-green-600 dark:text-green-400">Excellent</p>
+                                    <p class="text-sm text-gray-500 mt-2">Based on your recent routes and pollution avoidance.</p>
+                                </div>
+                                <div class="lg:col-span-2 bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md h-96">
+                                    <h3 class="text-lg font-semibold text-gray-800 dark:text-white mb-4">Weekly Pollution Exposure</h3>
+                                     <canvas id="exposureChart"></canvas>
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                               <div class="bg-white dark:bg-gray-800 rounded-xl p-6 text-center shadow-lg">
+                                  <div class="text-3xl font-bold text-green-600 dark:text-green-400 mb-2">78%</div>
+                                  <div class="text-sm text-gray-600 dark:text-gray-400">Pollution Avoided</div>
+                               </div>
+                               <div class="bg-white dark:bg-gray-800 rounded-xl p-6 text-center shadow-lg">
+                                  <div class="text-3xl font-bold text-blue-600 dark:text-blue-400 mb-2">₹240</div>
+                                  <div class="text-sm text-gray-600 dark:text-gray-400">Health Savings</div>
+                               </div>
+                               <div class="bg-white dark:bg-gray-800 rounded-xl p-6 text-center shadow-lg">
+                                  <div class="text-3xl font-bold text-purple-600 dark:text-purple-400 mb-2">15</div>
+                                  <div class="text-sm text-gray-600 dark:text-gray-400">Clean Routes Used</div>
+                               </div>
+                               <div class="bg-white dark:bg-gray-800 rounded-xl p-6 text-center shadow-lg">
+                                  <div class="text-3xl font-bold text-orange-600 dark:text-orange-400 mb-2">4.2kg</div>
+                                  <div class="text-sm text-gray-600 dark:text-gray-400">CO₂ Saved</div>
+                               </div>
+                            </div>
+                             <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md">
+                                 <h3 class="text-xl font-bold text-center mb-6 text-gray-800 dark:text-white">Your Eco Achievements</h3>
+                                 <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                     <div class="bg-gradient-to-br from-green-400 to-green-600 rounded-xl p-6 text-white text-center">
+                                         <div class="text-4xl mb-3">🌱</div>
+                                         <h4 class="text-lg font-bold mb-2">Eco Warrior</h4>
+                                         <p class="text-sm opacity-90">10 clean routes completed</p>
+                                     </div>
+                                     <div class="bg-gradient-to-br from-blue-400 to-blue-600 rounded-xl p-6 text-white text-center">
+                                         <div class="text-4xl mb-3">🏆</div>
+                                         <h4 class="text-lg font-bold mb-2">Health Champion</h4>
+                                         <p class="text-sm opacity-90">Avoided 50+ AQI exposure</p>
+                                     </div>
+                                     <div class="bg-gradient-to-br from-purple-400 to-purple-600 rounded-xl p-6 text-white text-center">
+                                         <div class="text-4xl mb-3">⭐</div>
+                                         <h4 class="text-lg font-bold mb-2">Smart Commuter</h4>
+                                         <p class="text-sm opacity-90">7-day streak of healthy routes</p>
+                                     </div>
+                                 </div>
+                             </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Live AQI Page with Real-time Data -->
+                <section id="liveAqiPage" class="page hidden bg-gray-50 dark:bg-gray-900 min-h-screen">
+                    <div class="container mx-auto p-4 sm:p-6">
+                        <header class="flex items-center justify-between mb-6">
+                            <button class="back-button p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
+                                <svg class="w-6 h-6 text-gray-700 dark:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+                            </button>
+                            <h1 class="text-2xl font-bold text-gray-800 dark:text-white">🌬️ Live Air Quality</h1>
+                            <button id="refreshAqi" class="p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
+                                <svg class="w-6 h-6 text-gray-700 dark:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                                </svg>
+                            </button>
+                        </header>
+
+                        <div id="liveAqiContent" class="space-y-6">
+                            <!-- Loading State -->
+                            <div id="liveAqiLoading" class="text-center p-12">
+                                <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                                <p class="text-gray-600 dark:text-gray-400">Fetching live air quality data...</p>
+                            </div>
+
+                            <!-- Error State -->
+                            <div id="liveAqiError" class="hidden text-center p-12 bg-red-50 dark:bg-red-900/20 rounded-lg">
+                                <div class="text-red-500 text-4xl mb-4">⚠️</div>
+                                <h3 class="text-lg font-semibold text-red-700 dark:text-red-300 mb-2">Unable to fetch data</h3>
+                                <p class="text-red-600 dark:text-red-400 mb-4">Could not retrieve air quality data for your location.</p>
+                                <button id="retryAqi" class="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors">
+                                    Try Again
+                                </button>
+                            </div>
+                            
+                            <!-- Data Display -->
+                            <div id="liveAqiData" class="hidden space-y-6">
+                                <!-- Main AQI Display -->
+                                <div class="bg-white dark:bg-gray-800 p-8 rounded-xl shadow-lg text-center">
+                                    <h3 class="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-4">Current Air Quality Index</h3>
+                                    <div id="mainAqiDisplay" class="text-8xl font-bold mb-4">--</div>
+                                    <div id="aqiLevel" class="text-2xl font-semibold mb-4">--</div>
+                                    <div id="aqiLocation" class="text-gray-600 dark:text-gray-400">📍 Loading location...</div>
+                                </div>
+
+                                <!-- Detailed Measurements -->
+                                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                    <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow text-center">
+                                        <div class="text-sm text-gray-600 dark:text-gray-400 mb-1">PM2.5</div>
+                                        <div id="pm25Value" class="text-2xl font-bold text-gray-800 dark:text-white">--</div>
+                                        <div class="text-xs text-gray-500">μg/m³</div>
+                                    </div>
+                                    <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow text-center">
+                                        <div class="text-sm text-gray-600 dark:text-gray-400 mb-1">PM10</div>
+                                        <div id="pm10Value" class="text-2xl font-bold text-gray-800 dark:text-white">--</div>
+                                        <div class="text-xs text-gray-500">μg/m³</div>
+                                    </div>
+                                    <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow text-center">
+                                        <div class="text-sm text-gray-600 dark:text-gray-400 mb-1">O₃</div>
+                                        <div id="o3Value" class="text-2xl font-bold text-gray-800 dark:text-white">--</div>
+                                        <div class="text-xs text-gray-500">μg/m³</div>
+                                    </div>
+                                    <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow text-center">
+                                        <div class="text-sm text-gray-600 dark:text-gray-400 mb-1">NO₂</div>
+                                        <div id="no2Value" class="text-2xl font-bold text-gray-800 dark:text-white">--</div>
+                                        <div class="text-xs text-gray-500">μg/m³</div>
+                                    </div>
+                                </div>
+
+                                <!-- Health Recommendations -->
+                                <div id="healthRecommendationsLive" class="bg-gradient-to-r from-blue-50 to-green-50 dark:from-blue-900/20 dark:to-green-900/20 p-6 rounded-xl">
+                                    <h4 class="text-lg font-semibold text-gray-800 dark:text-white mb-4">Health Recommendations</h4>
+                                    <div id="liveHealthRecs" class="space-y-3">
+                                        <!-- Dynamic health recommendations will be inserted here -->
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+                
+                <section id="joggingPage" class="page hidden bg-gray-50 dark:bg-gray-900 min-h-screen">
+                     <div class="container mx-auto p-4 sm:p-6">
+                         <header class="flex items-center justify-between mb-6">
+                             <button class="back-button p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
+                                 <svg class="w-6 h-6 text-gray-700 dark:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+                             </button>
+                             <h1 class="text-2xl font-bold text-gray-800 dark:text-white">🚶 Jogging/Cycling Mode</h1>
+                             <div class="w-8"></div> </header>
+                         <div class="grid grid-cols-2 gap-4 mb-4 text-center">
+                             <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow">
+                                 <p class="text-sm text-gray-500 dark:text-gray-400">Distance</p>
+                                 <p class="text-3xl font-bold text-gray-800 dark:text-white"><span id="joggingDistance">0.0</span> km</p>
+                             </div>
+                              <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow">
+                                 <p class="text-sm text-gray-500 dark:text-gray-400">Steps</p>
+                                 <p class="text-3xl font-bold text-gray-800 dark:text-white"><span id="joggingSteps">0</span></p>
+                             </div>
+                         </div>
+                         <div id="joggingMap" class="h-[60vh] rounded-xl shadow-lg"></div>
+                     </div>
+                </section>
+
+                <section id="commutePage" class="page hidden bg-gray-50 dark:bg-gray-900 min-h-screen">
+                     <div class="container mx-auto p-4 sm:p-6">
+                         <header class="flex items-center justify-between mb-6">
+                             <button class="back-button p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
+                                 <svg class="w-6 h-6 text-gray-700 dark:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+                             </button>
+                             <h1 class="text-2xl font-bold text-gray-800 dark:text-white">🚗 Commute Mode</h1>
+                             <div class="w-8"></div> </header>
+                         <div class="grid grid-cols-1 gap-4 mb-4 text-center">
+                             <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow">
+                                 <p class="text-sm text-gray-500 dark:text-gray-400">Distance</p>
+                                 <p class="text-3xl font-bold text-gray-800 dark:text-white"><span id="commuteDistance">0.0</span> km</p>
+                             </div>
+                         </div>
+                         <div id="commuteMap" class="h-[60vh] rounded-xl shadow-lg"></div>
+                     </div>
+                </section>
+
+            </div>
+            <footer class="gradient-bg text-white py-8">
+                <div class="container mx-auto px-4 text-center">
+                    <div class="flex items-center justify-center space-x-3 mb-4">
+                        <svg width="32" height="32" viewBox="0 0 48 48">
+                            <path d="M24 4C16 4 10 10 10 18C10 26 16 32 24 40C32 32 38 26 38 18C38 10 32 4 24 4Z" fill="#34d399" opacity="0.8"/>
+                            <circle cx="20" cy="16" r="2" fill="#ffffff" opacity="0.9"/>
+                            <circle cx="28" cy="16" r="2" fill="#ffffff" opacity="0.9"/>
+                            <circle cx="24" cy="24" r="3" fill="#ffffff"/>
+                            <line x1="20" y1="16" x2="24" y2="24" stroke="#ffffff" stroke-width="1.5" opacity="0.7"/>
+                            <line x1="28" y1="16" x2="24" y2="24" stroke="#ffffff" stroke-width="1.5" opacity="0.7"/>
+                            <path d="M12 30 Q18 26 24 30 Q30 34 36 30" stroke="#ffffff" stroke-width="2" fill="none" opacity="0.6"/>
+                        </svg>
+                        <h4 class="text-xl font-bold">PathNetra</h4>
+                    </div>
+                    <p class="opacity-90 mb-4">Breathe Sense - Making Indore healthier, one route at a time</p>
+                    <p class="text-sm opacity-75">©️ 2025 PathNetra. Built for a cleaner, healthier future.</p>
+                </div>
+            </footer>
+
+            <button id="pathNetraToggle" class="fixed bottom-6 right-6 w-16 h-16 rounded-full gradient-bg text-white shadow-lg flex items-center justify-center transform hover:scale-110 transition-transform z-50">
+                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>
+            </button>
+            <div id="pathNetraWindow" class="fixed bottom-24 right-6 w-96 h-[32rem] bg-white dark:bg-gray-800 rounded-xl shadow-2xl flex flex-col z-50 transform scale-95 opacity-0 transition-all pointer-events-none">
+                <div class="gradient-bg p-4 rounded-t-xl text-white">
+                    <h3 class="font-bold text-lg">PathNetra AI</h3>
+                    <p class="text-sm opacity-90">Your Pollution-Smart Assistant</p>
+                </div>
+                <div id="pathNetraMessages" class="flex-1 p-4 overflow-y-auto h-[23rem]">
+                    <div class="mb-4">
+                        <div class="inline-block bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-lg p-3 max-w-xs">
+                            Hello! I'm PathNetra, now powered by Google Gemini. Ask me anything!
+                        </div>
+                    </div>
+                </div>
+                <div class="p-4 border-t border-gray-200 dark:border-gray-700">
+                    <form id="pathNetraForm" class="flex items-center">
+                        <input type="text" id="pathNetraInput" placeholder="Ask me anything..." class="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-800 dark:text-white" autocomplete="off">
+                        <button type="submit" class="ml-3 p-2 rounded-lg gradient-bg text-white">
+                            <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z"></path></svg>
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script type="module">
+        // --- START: Merged Application & AI JavaScript ---
+        import { GoogleGenerativeAI } from "https://esm.run/@google/generative-ai";
+
+        // --- SECTION 1: Main Application Logic ---
+
+        // --- Landing Page Logic ---
+        const landingPage = document.getElementById('landingPage');
+        const loginPage = document.getElementById('loginPage');
+        const appWrapper = document.getElementById('appWrapper');
+        const loginForm = document.getElementById('loginForm');
+        const getLocationPermission = document.getElementById('getLocationPermission');
+        const viewDashboard = document.getElementById('viewDashboard');
+        const liveAqiValue = document.getElementById('liveAqiValue');
+        const liveAqiLevel = document.getElementById('liveAqiLevel');
+        const liveAqiLocation = document.getElementById('liveAqiLocation');
+        const animatedBackground = document.getElementById('animatedBackground');
+
+        let userLocation = null;
+        let currentAqi = null;
+
+        // Initialize landing page
+        function initializeLandingPage() {
+            // Show landing page by default
+            landingPage.classList.remove('hidden');
+            loginPage.classList.add('hidden');
+            appWrapper.classList.add('hidden');
+            
+            // Start with a default AQI simulation
+            simulateAqiDisplay();
+        }
+
+        // Simulate AQI display with random data
+        function simulateAqiDisplay() {
+            const aqiValue = Math.floor(Math.random() * 150) + 30; // 30-180 range
+            const aqiInfo = getAqiInfo(aqiValue);
+            
+            liveAqiValue.textContent = aqiValue;
+            liveAqiLevel.textContent = aqiInfo.level;
+            liveAqiLevel.className = `text-xl font-semibold mb-4 ${aqiInfo.color}`;
+            liveAqiLocation.textContent = '📍 Indore, Madhya Pradesh';
+            
+            // Update background based on AQI
+            updateBackgroundForAqi(aqiValue);
+        }
+
+        // Update animated background based on AQI
+        function updateBackgroundForAqi(aqi) {
+            let bgClass = 'aqi-excellent-bg';
+            if (aqi > 100) bgClass = 'aqi-moderate-bg';
+            if (aqi > 150) bgClass = 'aqi-poor-bg';
+            if (aqi > 200) bgClass = 'aqi-severe-bg';
+            
+            animatedBackground.className = `absolute inset-0 ${bgClass} transition-all duration-3000`;
+            animatedBackground.innerHTML = `
+                <div class="absolute inset-0 bg-black bg-opacity-20"></div>
+                <div class="absolute inset-0">
+                    <div class="particle" style="top: 20%; left: 10%; animation-delay: 0s;"></div>
+                    <div class="particle" style="top: 60%; left: 80%; animation-delay: 2s;"></div>
+                    <div class="particle" style="top: 40%; left: 30%; animation-delay: 4s;"></div>
+                    <div class="particle" style="top: 80%; left: 60%; animation-delay: 1s;"></div>
+                    <div class="particle" style="top: 10%; left: 70%; animation-delay: 3s;"></div>
+                </div>
+            `;
+        }
+
+        // Handle location permission request
+        getLocationPermission.addEventListener('click', () => {
+            if (!navigator.geolocation) {
+                alert('Geolocation is not supported by this browser.');
+                return;
+            }
+
+            const button = getLocationPermission;
+            const originalText = button.innerHTML;
+            button.innerHTML = '<div class="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div> Getting location...';
+            button.disabled = true;
+
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    userLocation = {
+                        lat: position.coords.latitude,
+                        lng: position.coords.longitude
+                    };
+                    
+                    // Update location display
+                    liveAqiLocation.textContent = `📍 Your Location (${userLocation.lat.toFixed(4)}, ${userLocation.lng.toFixed(4)})`;
+                    
+                    // Simulate AQI for user's location
+                    const userAqi = Math.floor(Math.random() * 120) + 40; // 40-160 range
+                    const aqiInfo = getAqiInfo(userAqi);
+                    
+                    liveAqiValue.textContent = userAqi;
+                    liveAqiLevel.textContent = aqiInfo.level;
+                    liveAqiLevel.className = `text-xl font-semibold mb-4 ${aqiInfo.color}`;
+                    
+                    // Update background
+                    updateBackgroundForAqi(userAqi);
+                    
+                    // Show dashboard button
+                    viewDashboard.classList.remove('opacity-0', 'pointer-events-none');
+                    viewDashboard.classList.add('opacity-100');
+                    
+                    // Hide location button
+                    getLocationPermission.classList.add('hidden');
+                    
+                    button.innerHTML = originalText;
+                    button.disabled = false;
+                },
+                (error) => {
+                    console.error('Error getting location:', error);
+                    let errorMessage = 'Unable to get your location. ';
+                    switch(error.code) {
+                        case error.PERMISSION_DENIED:
+                            errorMessage += 'Please allow location access and try again.';
+                            break;
+                        case error.POSITION_UNAVAILABLE:
+                            errorMessage += 'Location information is unavailable.';
+                            break;
+                        case error.TIMEOUT:
+                            errorMessage += 'Location request timed out.';
+                            break;
+                    }
+                    alert(errorMessage);
+                    
+                    button.innerHTML = originalText;
+                    button.disabled = false;
+                },
+                {
+                    enableHighAccuracy: true,
+                    timeout: 10000,
+                    maximumAge: 300000
+                }
+            );
+        });
+
+        // Handle dashboard access
+        viewDashboard.addEventListener('click', () => {
+            landingPage.classList.add('hidden');
+            appWrapper.classList.remove('hidden');
+            
+            // This ensures the map renders correctly after its container becomes visible
+            if (map) {
+                setTimeout(() => map.invalidateSize(), 100);
+            }
+        });
+
+        // Login Logic
+        loginForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            // In a real app, you'd add credential validation here
+            
+            // Show loading state
+            const submitButton = loginForm.querySelector('button[type="submit"]');
+            const originalText = submitButton.innerHTML;
+            submitButton.innerHTML = '<div class="animate-spin rounded-full h-5 w-5 border-b-2 border-white mx-auto"></div> Logging in...';
+            submitButton.disabled = true;
+            
+            // Simulate login delay
+            setTimeout(() => {
+                loginPage.classList.add('hidden');
+                appWrapper.classList.remove('hidden');
+                
+                // This ensures the map renders correctly after its container becomes visible
+                if (map) {
+                    setTimeout(() => map.invalidateSize(), 100);
+                }
+                
+                // Reset button
+                submitButton.innerHTML = originalText;
+                submitButton.disabled = false;
+            }, 1000);
+        });
+
+        // Initialize the app with login page as default
+        function initializeApp() {
+            // Show login page by default
+            loginPage.classList.remove('hidden');
+            landingPage.classList.add('hidden');
+            appWrapper.classList.add('hidden');
+        }
+
+        // Current Location Detection
+        const detectLocation = document.getElementById('detectLocation');
+        const currentLocationText = document.getElementById('currentLocationText');
+
+        detectLocation.addEventListener('click', () => {
+            if (!navigator.geolocation) {
+                alert('Geolocation is not supported by this browser.');
+                return;
+            }
+
+            const button = detectLocation;
+            const originalText = button.innerHTML;
+            button.innerHTML = '<div class="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div> Detecting...';
+            button.disabled = true;
+
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    const lat = position.coords.latitude;
+                    const lng = position.coords.longitude;
+                    
+                    // Store current location
+                    currentLocation = { lat, lng };
+                    locations.current = { lat, lng };
+                    
+                    // Reverse geocoding to get city name
+                    fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=en`)
+                        .then(response => response.json())
+                        .then(data => {
+                            const cityName = data.city || data.locality || 'Unknown Location';
+                            currentLocationText.textContent = `${cityName}, ${data.principalSubdivision || ''}`;
+                            
+                            // Update button to show success
+                            button.innerHTML = '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> Location Found';
+                            button.classList.remove('bg-green-500', 'hover:bg-green-600');
+                            button.classList.add('bg-green-600');
+                            
+                            // Show success message
+                            showLocationSuccess();
+                        })
+                        .catch(error => {
+                            console.error('Error getting location name:', error);
+                            currentLocationText.textContent = `Location: ${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+                            
+                            button.innerHTML = '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> Location Found';
+                            button.classList.remove('bg-green-500', 'hover:bg-green-600');
+                            button.classList.add('bg-green-600');
+                        });
+                },
+                (error) => {
+                    console.error('Error getting location:', error);
+                    let errorMessage = 'Unable to get your location. ';
+                    switch(error.code) {
+                        case error.PERMISSION_DENIED:
+                            errorMessage += 'Please allow location access and try again.';
+                            break;
+                        case error.POSITION_UNAVAILABLE:
+                            errorMessage += 'Location information is unavailable.';
+                            break;
+                        case error.TIMEOUT:
+                            errorMessage += 'Location request timed out.';
+                            break;
+                    }
+                    alert(errorMessage);
+                    
+                    button.innerHTML = originalText;
+                    button.disabled = false;
+                },
+                {
+                    enableHighAccuracy: true,
+                    timeout: 10000,
+                    maximumAge: 300000
+                }
+            );
+        });
+
+        // Initialize the app with login page as default
+        initializeApp();
+
+        // Health Recommendations based on AQI
+        function generateHealthRecommendations(aqi) {
+            const recommendations = [];
+            
+            if (aqi <= 50) {
+                recommendations.push({
+                    icon: '🌱',
+                    title: 'Excellent Air Quality',
+                    message: 'Perfect day for outdoor activities! Enjoy your time outside.',
+                    color: 'text-green-600 dark:text-green-400'
+                });
+                recommendations.push({
+                    icon: '🚶‍♀️',
+                    title: 'Outdoor Exercise',
+                    message: 'Great time for jogging, cycling, or outdoor sports.',
+                    color: 'text-green-600 dark:text-green-400'
+                });
+            } else if (aqi <= 100) {
+                recommendations.push({
+                    icon: '✅',
+                    title: 'Good Air Quality',
+                    message: 'Safe for most people. Sensitive individuals should monitor symptoms.',
+                    color: 'text-blue-600 dark:text-blue-400'
+                });
+                recommendations.push({
+                    icon: '🌳',
+                    title: 'Green Routes',
+                    message: 'Choose routes through parks and green areas when possible.',
+                    color: 'text-blue-600 dark:text-blue-400'
+                });
+            } else if (aqi <= 150) {
+                recommendations.push({
+                    icon: '⚠️',
+                    title: 'Moderate Air Quality',
+                    message: 'Sensitive groups should reduce prolonged outdoor exertion.',
+                    color: 'text-yellow-600 dark:text-yellow-400'
+                });
+                recommendations.push({
+                    icon: '😷',
+                    title: 'Consider Mask',
+                    message: 'Wearing a mask can help reduce exposure during outdoor activities.',
+                    color: 'text-yellow-600 dark:text-yellow-400'
+                });
+            } else if (aqi <= 200) {
+                recommendations.push({
+                    icon: '🚫',
+                    title: 'Unhealthy for Sensitive Groups',
+                    message: 'Children, elderly, and those with respiratory issues should stay indoors.',
+                    color: 'text-orange-600 dark:text-orange-400'
+                });
+                recommendations.push({
+                    icon: '🏠',
+                    title: 'Stay Indoors',
+                    message: 'Keep windows closed and use air purifiers if available.',
+                    color: 'text-orange-600 dark:text-orange-400'
+                });
+            } else {
+                recommendations.push({
+                    icon: '🚨',
+                    title: 'Unhealthy Air Quality',
+                    message: 'Everyone should avoid outdoor activities. Stay indoors.',
+                    color: 'text-red-600 dark:text-red-400'
+                });
+                recommendations.push({
+                    icon: '🏥',
+                    title: 'Seek Medical Help',
+                    message: 'If you experience breathing difficulties, consult a doctor.',
+                    color: 'text-red-600 dark:text-red-400'
+                });
+            }
+            
+            // Add general recommendations
+            recommendations.push({
+                icon: '💧',
+                title: 'Stay Hydrated',
+                message: 'Drink plenty of water to help your body cope with air pollution.',
+                color: 'text-blue-600 dark:text-blue-400'
+            });
+            
+            return recommendations;
+        }
+
+        // Update health recommendations in dashboard
+        function updateHealthRecommendations(aqi) {
+            const container = document.getElementById('healthRecommendations');
+            if (!container) return;
+            
+            const recommendations = generateHealthRecommendations(aqi);
+            container.innerHTML = '';
+            
+            recommendations.forEach(rec => {
+                const recElement = document.createElement('div');
+                recElement.className = 'bg-white dark:bg-gray-700 p-4 rounded-lg shadow-sm';
+                recElement.innerHTML = `
+                    <div class="flex items-start space-x-3">
+                        <div class="text-2xl">${rec.icon}</div>
+                        <div class="flex-1">
+                            <h5 class="font-semibold text-gray-800 dark:text-white mb-1">${rec.title}</h5>
+                            <p class="text-sm ${rec.color}">${rec.message}</p>
+                        </div>
+                    </div>
+                `;
+                container.appendChild(recElement);
+            });
+        }
+
+        // Health Center functionality
+        const setupHealthProfile = document.getElementById('setupHealthProfile');
+        const trackSymptoms = document.getElementById('trackSymptoms');
+        const viewHealthHistory = document.getElementById('viewHealthHistory');
+
+        setupHealthProfile.addEventListener('click', () => {
+            alert('🏥 Health Profile Setup\n\nThis feature will help you:\n• Set up personal health sensitivities\n• Configure respiratory conditions\n• Set up personalized alerts\n• Track health goals\n\nComing soon in the next update!');
+        });
+
+        trackSymptoms.addEventListener('click', () => {
+            alert('📊 Symptom Tracking\n\nTrack your daily symptoms:\n• Breathing difficulties\n• Eye irritation\n• Headaches\n• Fatigue\n• Correlate with pollution exposure\n\nThis helps identify patterns and improve recommendations!');
+        });
+
+        viewHealthHistory.addEventListener('click', () => {
+            alert('📈 Health History\n\nView your health journey:\n• Weekly pollution exposure\n• Symptom patterns\n• Health improvements\n• Route recommendations impact\n• Personalized insights\n\nTrack your progress over time!');
+        });
+
+        // Community Engagement functionality
+        const reportPollution = document.getElementById('reportPollution');
+        const communityEvents = document.getElementById('communityEvents');
+
+        reportPollution.addEventListener('click', () => {
+            alert('🚨 Report Pollution Source\n\nHelp make Indore cleaner by reporting:\n• Industrial emissions\n• Vehicle pollution hotspots\n• Construction dust\n• Burning waste\n• Other pollution sources\n\nYour reports help authorities take action!\n\nEarn eco-points for each valid report! 🌟');
+        });
+
+        communityEvents.addEventListener('click', () => {
+            alert('🌱 Community Events\n\nJoin local environmental initiatives:\n• Cleanup drives in your area\n• Tree planting events\n• Pollution awareness campaigns\n• Cycling groups\n• Green technology workshops\n\nConnect with like-minded citizens!\n\nUpcoming events:\n• Weekend cleanup at Rajwada (Sat 9 AM)\n• Tree planting at Vijay Nagar (Sun 7 AM)\n• Cycling group ride (Daily 6 PM)');
+        });
+
+        // Gamification and Notifications
+        const viewAchievements = document.getElementById('viewAchievements');
+        const enableNotifications = document.getElementById('enableNotifications');
+
+        viewAchievements.addEventListener('click', () => {
+            alert('🏆 Your Achievements\n\n🌟 Eco Warrior - 10 clean routes completed\n🏅 Health Champion - Avoided 50+ AQI exposure\n⭐ Smart Commuter - 7-day streak of healthy routes\n🌱 Green Guardian - Reported 5 pollution sources\n🚴 Cycling Hero - 20km cycled on clean routes\n\nNext goals:\n• Complete 15 clean routes (5 more)\n• Maintain 10-day streak (3 more days)\n• Report 3 more pollution sources\n\nKeep up the great work! 💚');
+        });
+
+        enableNotifications.addEventListener('click', () => {
+            if (Notification.permission === 'granted') {
+                alert('🔔 Notifications Enabled\n\nYou\'ll receive alerts for:\n• High AQI warnings in your area\n• Best times to travel\n• Clean route suggestions\n• Community events\n• Achievement unlocks\n• Health recommendations\n\nNotifications are already enabled!');
+            } else if (Notification.permission === 'denied') {
+                alert('🔔 Notifications Disabled\n\nTo enable notifications:\n1. Click the lock icon in your browser\n2. Allow notifications for this site\n3. Refresh the page\n\nThis helps you stay informed about air quality!');
+            } else {
+                Notification.requestPermission().then(permission => {
+                    if (permission === 'granted') {
+                        alert('🔔 Notifications Enabled!\n\nYou\'ll now receive alerts for air quality updates and health recommendations.');
+                        // Show a sample notification
+                        new Notification('PathNetra', {
+                            body: 'Welcome! You\'ll receive air quality alerts here.',
+                            icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><path d="M24 4C16 4 10 10 10 18C10 26 16 32 24 40C32 32 38 26 38 18C38 10 32 4 24 4Z" fill="#10b981"/></svg>'
+                        });
+                    } else {
+                        alert('🔔 Notifications Blocked\n\nYou can enable them later in your browser settings.');
+                    }
+                });
+            }
+        });
+
+        // Simulate eco-points updates
+        function updateEcoPoints() {
+            const ecoPointsElement = document.getElementById('ecoPoints');
+            if (ecoPointsElement) {
+                let currentPoints = parseInt(ecoPointsElement.textContent.replace(',', ''));
+                // Simulate earning points for using clean routes
+                if (Math.random() < 0.3) { // 30% chance to earn points
+                    currentPoints += Math.floor(Math.random() * 20) + 5;
+                    ecoPointsElement.textContent = currentPoints.toLocaleString();
+                    
+                    // Show notification if points earned
+                    if (Notification.permission === 'granted') {
+                        new Notification('Eco Points Earned!', {
+                            body: `+${Math.floor(Math.random() * 20) + 5} points for using a clean route!`,
+                            icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><path d="M24 4C16 4 10 10 10 18C10 26 16 32 24 40C32 32 38 26 38 18C38 10 32 4 24 4Z" fill="#10b981"/></svg>'
+                        });
+                    }
+                }
+            }
+        }
+
+        // Update eco points every 30 seconds
+        setInterval(updateEcoPoints, 30000);
+
+        // --- Dark Mode Toggle ---
+        const darkModeToggleApp = document.getElementById('darkModeToggleApp');
+        const html = document.documentElement;
+
+        function toggleTheme() {
+              html.classList.toggle('dark');
+             const activePage = document.querySelector('.page:not(.hidden)');
+             if (activePage) {
+                 const pageId = activePage.id;
+                  if (pageId === 'predictionPage') renderPredictionChart();
+                  if (pageId === 'healthScorePage') initHealthScoreCharts();
+             }
+        }
+        darkModeToggleApp.addEventListener('click', toggleTheme);
+
+        // --- Page Navigation Logic ---
+        const mainContent = document.getElementById('mainContent');
+        const header = document.querySelector('header');
+        const footer = document.querySelector('footer');
+        const pathNetraToggle = document.getElementById('pathNetraToggle');
+        const liveAqiButton = document.getElementById('liveAqiButton');
+        const aiPredictionButton = document.getElementById('aiPredictionButton');
+        const healthScoreButton = document.getElementById('healthScoreButton');
+        const healthAlertButton = document.getElementById('healthAlertButton');
+        const backButtons = document.querySelectorAll('.back-button');
+        const joggingModeButton = document.getElementById('joggingModeButton');
+        const commuteModeButton = document.getElementById('commuteModeButton');
+
+        const pages = {
+            aqi: document.getElementById('aqiPage'),
+            liveAqi: document.getElementById('liveAqiPage'),
+            prediction: document.getElementById('predictionPage'),
+            health: document.getElementById('healthScorePage'),
+            alert: document.getElementById('healthAlertPage'),
+            jogging: document.getElementById('joggingPage'),
+            commute: document.getElementById('commutePage')
+        };
+
+        function showPage(pageId) {
+            mainContent.classList.add('hidden');
+            Object.values(pages).forEach(page => page.classList.remove('active'));
+            const pageToShow = document.getElementById(pageId);
+            pageToShow.classList.add('active');
+            window.scrollTo(0, 0);
+
+            if (pageId === 'aqiPage') fetchLiveAqiData();
+            if (pageId === 'liveAqiPage') fetchRealTimeAqiData();
+            if (pageId === 'predictionPage') {
+                generateAreaForecasts();
+                renderPredictionChart();
+            }
+            if (pageId === 'healthScorePage') initHealthScoreCharts();
+            if (pageId === 'joggingPage') initJoggingMap();
+            if (pageId === 'commutePage') initCommuteMap();
+        }
+
+        function showMainContent() {
+            mainContent.classList.remove('hidden');
+            Object.values(pages).forEach(page => page.classList.remove('active'));
+            window.scrollTo(0, 0);
+            if(joggingInterval) clearInterval(joggingInterval);
+            if(commuteInterval) clearInterval(commuteInterval);
+        }
+
+        liveAqiButton.addEventListener('click', () => showPage('liveAqiPage'));
+        aiPredictionButton.addEventListener('click', () => showPage('predictionPage'));
+        healthScoreButton.addEventListener('click', () => showPage('healthScorePage'));
+        healthAlertButton.addEventListener('click', () => showPage('healthAlertPage'));
+        joggingModeButton.addEventListener('click', () => showPage('joggingPage'));
+        commuteModeButton.addEventListener('click', () => showPage('commutePage'));
+        backButtons.forEach(button => button.addEventListener('click', showMainContent));
+
+        // --- Dashboard Sidebar ---
+        const dashboardToggle = document.getElementById('dashboardToggle');
+        const dashboardSidebar = document.getElementById('dashboardSidebar');
+        const dashboardOverlay = document.getElementById('dashboardOverlay');
+        const closeDashboard = document.getElementById('closeDashboard');
+
+        function openDashboard() {
+            dashboardSidebar.classList.add('open');
+            dashboardOverlay.classList.add('active');
+            document.body.style.overflow = 'hidden';
+            
+            // Update health recommendations based on current AQI
+            const currentAqi = userLocation ? Math.floor(Math.random() * 120) + 40 : 75;
+            updateHealthRecommendations(currentAqi);
+        }
+
+        function closeDashboardPanel() {
+            dashboardSidebar.classList.remove('open');
+            dashboardOverlay.classList.remove('active');
+            document.body.style.overflow = 'auto';
+        }
+
+        dashboardToggle.addEventListener('click', openDashboard);
+        closeDashboard.addEventListener('click', closeDashboardPanel);
+        dashboardOverlay.addEventListener('click', closeDashboardPanel);
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                if(dashboardSidebar.classList.contains('open')) closeDashboardPanel();
+                if(wasteScannerModal.classList.contains('active')) closeWasteScannerModal();
+                if(document.querySelector('.page.active')) showMainContent();
+            }
+        });
+
+        // --- Waste Scanner Modal ---
+        const wasteScannerModal = document.getElementById('wasteScannerModal');
+        const openWasteScanner = document.getElementById('openWasteScanner');
+        const openWasteScannerCard = document.getElementById('openWasteScannerCard');
+        const closeWasteScanner = document.getElementById('closeWasteScanner');
+        const wasteImageInput = document.getElementById('wasteImageInput');
+        const cameraSection = document.getElementById('cameraSection');
+        const analysisSection = document.getElementById('analysisSection');
+        const resultsSection = document.getElementById('resultsSection');
+        const trackReport = document.getElementById('trackReport');
+
+        function openWasteScannerModal() {
+            wasteScannerModal.classList.add('active');
+            document.body.style.overflow = 'hidden';
+            analysisSection.classList.add('hidden');
+            resultsSection.classList.add('hidden');
+        }
+
+        function closeWasteScannerModal() {
+            wasteScannerModal.classList.remove('active');
+            if (!dashboardSidebar.classList.contains('open')) {
+                 document.body.style.overflow = 'auto';
+            }
+        }
+
+        function simulateWasteAnalysis() {
+            openWasteScannerModal();
+            analysisSection.classList.remove('hidden');
+            // cameraSection is not defined, so commented out
+            // cameraSection.classList.add('hidden'); 
+            setTimeout(() => {
+                analysisSection.classList.add('hidden');
+                resultsSection.classList.remove('hidden');
+                const wasteTypes = ['Plastic bottles & food waste', 'Paper & cardboard boxes', 'Food waste & organic matter', 'Metal cans & plastic bags', 'Glass bottles & containers'];
+                const locations = ['Near Rajwada, Indore', 'Sarafa Bazaar area', 'Vijay Nagar sector', 'Palasia Square vicinity', 'Airport Road junction'];
+                const priorities = ['Low', 'Medium', 'High'];
+                const priorityColors = { 'Low': 'text-green-600 dark:text-green-400', 'Medium': 'text-orange-600 dark:text-orange-400', 'High': 'text-red-600 dark:text-red-400' };
+                document.getElementById('wasteType').textContent = wasteTypes[Math.floor(Math.random() * wasteTypes.length)];
+                document.getElementById('wasteLocation').textContent = locations[Math.floor(Math.random() * locations.length)];
+                const randomPriority = priorities[Math.floor(Math.random() * priorities.length)];
+                const wastePriorityEl = document.getElementById('wastePriority');
+                wastePriorityEl.textContent = randomPriority;
+                wastePriorityEl.className = `font-semibold ${priorityColors[randomPriority]}`;
+                document.getElementById('reportId').textContent = '#WR2025' + String(Math.floor(Math.random() * 1000)).padStart(3, '0');
+            }, 3000);
+        }
+
+        openWasteScanner.addEventListener('click', () => wasteImageInput.click());
+        openWasteScannerCard.addEventListener('click', () => wasteImageInput.click());
+        closeWasteScanner.addEventListener('click', closeWasteScannerModal);
+        wasteScannerModal.addEventListener('click', (e) => { if (e.target === wasteScannerModal) closeWasteScannerModal(); });
+        wasteImageInput.addEventListener('change', (e) => { 
+            if (e.target.files && e.target.files[0]) {
+                simulateWasteAnalysis();
+            }
+        });
+        trackReport.addEventListener('click', () => { alert('🚛 Cleanup team dispatched! You will receive SMS updates on cleanup progress. Expected completion: Within 24 hours.'); });
+
+        // --- Map & Navigation Logic ---
+        let map, joggingMap, commuteMap, fastestRoute, safestRoute, balancedRoute;
+        let joggingInterval, commuteInterval;
+        let currentLocation = null;
+        let currentLocationMarker = null;
+
+        const locations = {
+            rajwada: { lat: 22.7196, lng: 75.8577 }, vijaynagar: { lat: 22.7532, lng: 75.8937 },
+            palasia: { lat: 22.7279, lng: 75.8723 }, sarafa: { lat: 22.7158, lng: 75.8550 },
+            airport: { lat: 22.7279, lng: 75.8010 },
+            current: null // Will be set when user gets their location
+        };
+
+        const aqiData = [
+            { lat: 22.7532, lng: 75.8937, aqi: 42, area: "Vijay Nagar", level: "good" },
+            { lat: 22.7196, lng: 75.8577, aqi: 68, area: "Rajwada", level: "moderate" },
+            { lat: 22.7279, lng: 75.8723, aqi: 89, area: "Palasia", level: "moderate" },
+            { lat: 22.7158, lng: 75.8550, aqi: 124, area: "Sarafa Bazaar", level: "poor" }
+        ];
+
+        function initMap() {
+            if (map) return;
+            map = L.map('map').setView([22.7196, 75.8577], 12);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap contributors' }).addTo(map);
+            
+            aqiData.forEach(point => {
+                const color = point.level === 'good' ? '#10b981' : point.level === 'moderate' ? '#f59e0b' : '#ef4444';
+                const marker = L.circleMarker([point.lat, point.lng], { radius: 15, fillColor: color, color: '#fff', weight: 2, opacity: 1, fillOpacity: 0.8 }).addTo(map);
+                marker.bindPopup(`<div class="text-center"><h4 class="font-bold">${point.area}</h4><p>AQI: <span class="font-bold">${point.aqi}</span></p><p class="text-sm capitalize">${point.level}</p></div>`);
+            });
+        }
+        initMap();
+
+        // --- Current Location Functionality ---
+        function getCurrentLocation() {
+            if (!navigator.geolocation) {
+                alert('Geolocation is not supported by this browser.');
+                return;
+            }
+
+            const getLocationBtn = document.getElementById('getCurrentLocation');
+            const originalText = getLocationBtn.innerHTML;
+            getLocationBtn.innerHTML = '<div class="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>';
+            getLocationBtn.disabled = true;
+
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    const lat = position.coords.latitude;
+                    const lng = position.coords.longitude;
+                    
+                    currentLocation = { lat, lng };
+                    locations.current = { lat, lng };
+                    
+                    // Add or update current location marker
+                    if (currentLocationMarker) {
+                        map.removeLayer(currentLocationMarker);
+                    }
+                    
+                    currentLocationMarker = L.marker([lat, lng], {
+                        icon: L.divIcon({
+                            className: 'current-location-marker',
+                            html: '<div class="w-4 h-4 bg-blue-500 border-2 border-white rounded-full shadow-lg"></div>',
+                            iconSize: [16, 16],
+                            iconAnchor: [8, 8]
+                        })
+                    }).addTo(map);
+                    
+                    currentLocationMarker.bindPopup(`
+                        <div class="text-center">
+                            <h4 class="font-bold text-blue-600">📍 Your Location</h4>
+                            <p class="text-sm">Lat: ${lat.toFixed(4)}</p>
+                            <p class="text-sm">Lng: ${lng.toFixed(4)}</p>
+                        </div>
+                    `);
+                    
+                    // Center map on current location
+                    map.setView([lat, lng], 15);
+                    
+                    // Update dropdown to show current location
+                    document.getElementById('startLocation').value = 'current';
+                    
+                    // Show success message
+                    showLocationSuccess();
+                    
+                    getLocationBtn.innerHTML = originalText;
+                    getLocationBtn.disabled = false;
+                },
+                (error) => {
+                    console.error('Error getting location:', error);
+                    let errorMessage = 'Unable to get your location. ';
+                    switch(error.code) {
+                        case error.PERMISSION_DENIED:
+                            errorMessage += 'Please allow location access and try again.';
+                            break;
+                        case error.POSITION_UNAVAILABLE:
+                            errorMessage += 'Location information is unavailable.';
+                            break;
+                        case error.TIMEOUT:
+                            errorMessage += 'Location request timed out.';
+                            break;
+                    }
+                    alert(errorMessage);
+                    
+                    getLocationBtn.innerHTML = originalText;
+                    getLocationBtn.disabled = false;
+                },
+                {
+                    enableHighAccuracy: true,
+                    timeout: 10000,
+                    maximumAge: 300000
+                }
+            );
+        }
+
+        function showLocationSuccess() {
+            // Create a temporary success message
+            const successDiv = document.createElement('div');
+            successDiv.className = 'fixed top-4 right-4 bg-green-500 text-white px-4 py-2 rounded shadow-lg z-50';
+            successDiv.innerHTML = '✅ Location found! You can now use "Current Location" in route planning.';
+            document.body.appendChild(successDiv);
+            
+            setTimeout(() => {
+                successDiv.remove();
+            }, 3000);
+        }
+
+        // Add event listener for current location button
+        document.getElementById('getCurrentLocation').addEventListener('click', getCurrentLocation);
+
+        function initJoggingMap() {
+            if(joggingInterval) clearInterval(joggingInterval);
+            if (joggingMap) {
+                joggingMap.invalidateSize();
+            } else {
+                joggingMap = L.map('joggingMap').setView([22.7196, 75.8577], 14);
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap contributors' }).addTo(joggingMap);
+            }
+
+            const joggingPath = [
+                [22.720, 75.858], [22.722, 75.860], [22.721, 75.865], [22.718, 75.864], [22.717, 75.860], [22.720, 75.858]
+            ];
+            const polyline = L.polyline(joggingPath, {color: 'blue'}).addTo(joggingMap);
+            joggingMap.fitBounds(polyline.getBounds());
+            
+            const marker = L.marker(joggingPath[0]).addTo(joggingMap);
+            let currentStep = 0;
+            let totalDistance = 0;
+
+            joggingInterval = setInterval(() => {
+                currentStep++;
+                if(currentStep >= joggingPath.length) currentStep = 0;
+                
+                const currentPoint = L.latLng(joggingPath[currentStep]);
+                const prevPoint = L.latLng(joggingPath[currentStep === 0 ? joggingPath.length - 1 : currentStep - 1]);
+                totalDistance += prevPoint.distanceTo(currentPoint);
+
+                marker.setLatLng(currentPoint);
+                document.getElementById('joggingDistance').textContent = (totalDistance / 1000).toFixed(2);
+                document.getElementById('joggingSteps').textContent = Math.floor(totalDistance / 0.78); // Approx steps
+            }, 2000);
+        }
+
+        function initCommuteMap() {
+            if(commuteInterval) clearInterval(commuteInterval);
+            if (commuteMap) {
+                commuteMap.invalidateSize();
+            } else {
+                commuteMap = L.map('commuteMap').setView([22.7196, 75.8577], 13);
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap contributors' }).addTo(commuteMap);
+            }
+
+            const commutePath = [
+                [locations.vijaynagar.lat, locations.vijaynagar.lng],
+                [22.74, 75.88],
+                [locations.palasia.lat, locations.palasia.lng],
+                [22.72, 75.86],
+                [locations.rajwada.lat, locations.rajwada.lng]
+            ];
+            const polyline = L.polyline(commutePath, {color: 'purple'}).addTo(commuteMap);
+            commuteMap.fitBounds(polyline.getBounds());
+
+            const marker = L.marker(commutePath[0]).addTo(commuteMap);
+            let currentStep = 0;
+            let totalDistance = 0;
+            commuteInterval = setInterval(() => {
+                currentStep++;
+                if (currentStep >= commutePath.length) {
+                    clearInterval(commuteInterval);
+                    return;
+                }
+                const currentPoint = L.latLng(commutePath[currentStep]);
+                const prevPoint = L.latLng(commutePath[currentStep - 1]);
+                totalDistance += prevPoint.distanceTo(currentPoint);
+                marker.setLatLng(currentPoint);
+                document.getElementById('commuteDistance').textContent = (totalDistance / 1000).toFixed(2);
+            }, 3000);
+        }
+
+        document.getElementById('findRoute').addEventListener('click', () => {
+            if (fastestRoute) map.removeLayer(fastestRoute);
+            if (safestRoute) map.removeLayer(safestRoute);
+            if (balancedRoute) map.removeLayer(balancedRoute);
+            
+            const startValue = document.getElementById('startLocation').value;
+            const endValue = document.getElementById('endLocation').value;
+            
+            // Check if current location is selected but not available
+            if (startValue === 'current' && !currentLocation) {
+                alert('Please get your current location first by clicking the "Get Location" button.');
+                return;
+            }
+            if (endValue === 'current' && !currentLocation) {
+                alert('Please get your current location first by clicking the "Get Location" button.');
+                return;
+            }
+            
+            const start = locations[startValue];
+            const end = locations[endValue];
+            
+            if (!start || !end) {
+                alert('Please select valid start and end locations.');
+                return;
+            }
+            
+            const startCoords = [start.lng, start.lat];
+            const endCoords = [end.lng, end.lat];
+
+            const midPointCoords = (document.getElementById('startLocation').value === 'rajwada' && document.getElementById('endLocation').value === 'airport') 
+                                     ? [locations.vijaynagar.lng, locations.vijaynagar.lat] 
+                                     : [75.8700, 22.7400];
+
+            const fastestUrl = `https://router.project-osrm.org/route/v1/driving/${startCoords.join(',')};${endCoords.join(',')}?overview=full&geometries=geojson`;
+            const safestUrl = `https://router.project-osrm.org/route/v1/driving/${startCoords.join(',')};${midPointCoords.join(',')};${endCoords.join(',')}?overview=full&geometries=geojson`;
+            const balancedUrl = `https://router.project-osrm.org/route/v1/driving/${startCoords.join(',')};${midPointCoords.join(',')};${endCoords.join(',')}?overview=full&geometries=geojson`;
+
+            Promise.all([
+                fetch(fastestUrl).then(res => res.json()), 
+                fetch(safestUrl).then(res => res.json()),
+                fetch(balancedUrl).then(res => res.json())
+            ])
+                .then(results => {
+                    const fastestData = results[0];
+                    const safestData = results[1];
+                    const balancedData = results[2];
+                    let fastestDistanceKm = 0;
+
+                    if (fastestData.routes && fastestData.routes.length > 0) {
+                        const route = fastestData.routes[0];
+                        fastestRoute = L.geoJSON(route.geometry, { style: { color: '#ef4444', weight: 6, opacity: 0.8 } }).addTo(map);
+                        fastestDistanceKm = route.distance / 1000;
+                        document.getElementById('fastestDistance').textContent = `${fastestDistanceKm.toFixed(1)} km`;
+                        document.getElementById('fastestTime').textContent = `${Math.round(route.duration / 60)} min`;
+                    }
+
+                    if (safestData.routes && safestData.routes.length > 0) {
+                        const route = safestData.routes[0];
+                        safestRoute = L.geoJSON(route.geometry, { style: { color: '#10b981', weight: 6, opacity: 0.8 } }).addTo(map);
+
+                        const safestDistanceKm = fastestDistanceKm + 0.5 + Math.random(); 
+                        
+                        document.getElementById('safestDistance').textContent = `${safestDistanceKm.toFixed(1)} km`;
+                        document.getElementById('safestTime').textContent = `${Math.round((route.duration / 60) * (safestDistanceKm / (route.distance / 1000)))} min`;
+                    }
+
+                    if (balancedData.routes && balancedData.routes.length > 0) {
+                        const route = balancedData.routes[0];
+                        balancedRoute = L.geoJSON(route.geometry, { style: { color: '#3b82f6', weight: 6, opacity: 0.8 } }).addTo(map);
+
+                        const balancedDistanceKm = fastestDistanceKm + 0.3 + Math.random() * 0.4; 
+                        
+                        document.getElementById('balancedDistance').textContent = `${balancedDistanceKm.toFixed(1)} km`;
+                        document.getElementById('balancedTime').textContent = `${Math.round((route.duration / 60) * (balancedDistanceKm / (route.distance / 1000)))} min`;
+                    }
+                    
+                    const routes = [fastestRoute, safestRoute, balancedRoute].filter(route => route);
+                    if(routes.length > 0) {
+                        const group = new L.featureGroup(routes);
+                        map.fitBounds(group.getBounds().pad(0.1));
+                    }
+
+                    document.getElementById('routeComparison').classList.remove('hidden');
+
+                    const navigateFastestBtn = document.getElementById('navigateFastest');
+                    const navigateSafestBtn = document.getElementById('navigateSafest');
+                    const navigateBalancedBtn = document.getElementById('navigateBalanced');
+                    
+                    // Create navigation URLs
+                    let fastestNavUrl, safestNavUrl, balancedNavUrl;
+                    
+                    if (startValue === 'current') {
+                        // Use current location for navigation
+                        fastestNavUrl = `https://www.google.com/maps/dir/?api=1&destination=${end.lat},${end.lng}&travelmode=driving`;
+                        safestNavUrl = `https://www.google.com/maps/dir/?api=1&destination=${end.lat},${end.lng}&waypoints=${midPointCoords[1]},${midPointCoords[0]}&travelmode=driving`;
+                        balancedNavUrl = `https://www.google.com/maps/dir/?api=1&destination=${end.lat},${end.lng}&waypoints=${midPointCoords[1]},${midPointCoords[0]}&travelmode=driving`;
+                    } else if (endValue === 'current') {
+                        // Navigate to current location
+                        fastestNavUrl = `https://www.google.com/maps/dir/?api=1&origin=${start.lat},${start.lng}&travelmode=driving`;
+                        safestNavUrl = `https://www.google.com/maps/dir/?api=1&origin=${start.lat},${start.lng}&waypoints=${midPointCoords[1]},${midPointCoords[0]}&travelmode=driving`;
+                        balancedNavUrl = `https://www.google.com/maps/dir/?api=1&origin=${start.lat},${start.lng}&waypoints=${midPointCoords[1]},${midPointCoords[0]}&travelmode=driving`;
+                    } else {
+                        // Both are predefined locations
+                        fastestNavUrl = `https://www.google.com/maps/dir/?api=1&origin=${start.lat},${start.lng}&destination=${end.lat},${end.lng}&travelmode=driving`;
+                        safestNavUrl = `https://www.google.com/maps/dir/?api=1&origin=${start.lat},${start.lng}&destination=${end.lat},${end.lng}&waypoints=${midPointCoords[1]},${midPointCoords[0]}&travelmode=driving`;
+                        balancedNavUrl = `https://www.google.com/maps/dir/?api=1&origin=${start.lat},${start.lng}&destination=${end.lat},${end.lng}&waypoints=${midPointCoords[1]},${midPointCoords[0]}&travelmode=driving`;
+                    }
+
+                    navigateFastestBtn.onclick = () => window.open(fastestNavUrl, '_blank');
+                    navigateSafestBtn.onclick = () => window.open(safestNavUrl, '_blank');
+                    navigateBalancedBtn.onclick = () => window.open(balancedNavUrl, '_blank');
+                })
+                .catch(error => console.error('Error fetching routes:', error));
+        });
+
+        // --- Chart.js Logic ---
+        let healthExposureChartInstance, predictionChartInstance;
+        
+        function getChartOptions() {
+            const isDark = document.documentElement.classList.contains('dark');
+            return {
+                textColor: isDark ? '#9ca3af' : '#6b7280',
+                gridColor: isDark ? '#374151' : '#e5e7eb',
+                legendColor: isDark ? '#fff' : '#374151'
+            };
+        }
+
+        function initHealthScoreCharts() {
+            if(healthExposureChartInstance) healthExposureChartInstance.destroy();
+            const opts = getChartOptions();
+            healthExposureChartInstance = new Chart(document.getElementById('exposureChart').getContext('2d'), {
+                type: 'line',
+                data: {
+                    labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+                    datasets: [{ label: 'Pollution Exposure (AQI)', data: [65, 45, 78, 52, 38, 42, 35], borderColor: '#10b981', backgroundColor: 'rgba(16, 185, 129, 0.1)', tension: 0.4, fill: true }]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { labels: { color: opts.legendColor } } },
+                    scales: { y: { beginAtZero: true, ticks: { color: opts.textColor }, grid: { color: opts.gridColor } }, x: { ticks: { color: opts.textColor }, grid: { color: opts.gridColor } } }
+                }
+            });
+        }
+        
+        function renderPredictionChart() {
+            if (predictionChartInstance) predictionChartInstance.destroy();
+            const opts = getChartOptions();
+            const labels = Array.from({ length: 12 }, (_, i) => `${(i * 2)}h`);
+            const data = Array.from({ length: 12 }, () => 50 + Math.random() * 50);
+
+            predictionChartInstance = new Chart(document.getElementById('predictionChart').getContext('2d'), {
+                type: 'line',
+                data: { labels, datasets: [{ label: 'Predicted AQI', data, borderColor: '#3b82f6', backgroundColor: 'rgba(59, 130, 246, 0.1)', tension: 0.4, fill: true }] },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: { y: { ticks: { color: opts.textColor }, grid: { color: opts.gridColor } }, x: { ticks: { color: opts.textColor }, grid: { color: opts.gridColor } } }
+                }
+            });
+        }
+        
+        // --- Live Data & Prediction Simulation ---
+        const WAQI_TOKEN = "YOUR_WAQI_API_TOKEN_HERE"; // IMPORTANT: Add your WAQI Token here
+
+        // Real-time AQI data fetching from OpenAQ API
+        async function fetchRealTimeAqiData() {
+            const loadingEl = document.getElementById('liveAqiLoading');
+            const errorEl = document.getElementById('liveAqiError');
+            const dataEl = document.getElementById('liveAqiData');
+            
+            // Show loading state
+            loadingEl.classList.remove('hidden');
+            errorEl.classList.add('hidden');
+            dataEl.classList.add('hidden');
+            
+            try {
+                if (!currentLocation) {
+                    throw new Error('Location not available. Please detect your location first.');
+                }
+                
+                // Fetch data from OpenAQ API
+                const response = await fetch(`https://api.openaq.org/v2/latest?coordinates=${currentLocation.lat},${currentLocation.lng}&radius=10000&limit=1`);
+                
+                if (!response.ok) {
+                    throw new Error('Failed to fetch data from OpenAQ API');
+                }
+                
+                const data = await response.json();
+                
+                if (!data.results || data.results.length === 0) {
+                    throw new Error('No air quality data available for your location');
+                }
+                
+                const result = data.results[0];
+                const measurements = result.measurements;
+                
+                // Calculate AQI from PM2.5 (simplified calculation)
+                let aqi = 0;
+                let pm25 = 0;
+                let pm10 = 0;
+                let o3 = 0;
+                let no2 = 0;
+                
+                measurements.forEach(measurement => {
+                    switch(measurement.parameter) {
+                        case 'pm25':
+                            pm25 = measurement.value;
+                            aqi = Math.round(calculateAQI(pm25, 'pm25'));
+                            break;
+                        case 'pm10':
+                            pm10 = measurement.value;
+                            break;
+                        case 'o3':
+                            o3 = measurement.value;
+                            break;
+                        case 'no2':
+                            no2 = measurement.value;
+                            break;
+                    }
+                });
+                
+                // If no PM2.5 data, use PM10
+                if (aqi === 0 && pm10 > 0) {
+                    aqi = Math.round(calculateAQI(pm10, 'pm10'));
+                }
+                
+                // If still no AQI, use a default value
+                if (aqi === 0) {
+                    aqi = Math.floor(Math.random() * 150) + 30;
+                }
+                
+                // Update UI
+                document.getElementById('mainAqiDisplay').textContent = aqi;
+                document.getElementById('pm25Value').textContent = pm25.toFixed(1);
+                document.getElementById('pm10Value').textContent = pm10.toFixed(1);
+                document.getElementById('o3Value').textContent = o3.toFixed(1);
+                document.getElementById('no2Value').textContent = no2.toFixed(1);
+                
+                // Update AQI level and color
+                const aqiInfo = getAqiInfo(aqi);
+                const aqiLevelEl = document.getElementById('aqiLevel');
+                aqiLevelEl.textContent = aqiInfo.level;
+                aqiLevelEl.className = `text-2xl font-semibold mb-4 ${aqiInfo.color}`;
+                
+                // Update location
+                document.getElementById('aqiLocation').textContent = `📍 ${result.location} (${result.city || 'Unknown City'})`;
+                
+                // Update health recommendations
+                updateLiveHealthRecommendations(aqi);
+                
+                // Show data
+                loadingEl.classList.add('hidden');
+                dataEl.classList.remove('hidden');
+                
+            } catch (error) {
+                console.error('Error fetching AQI data:', error);
+                loadingEl.classList.add('hidden');
+                errorEl.classList.remove('hidden');
+            }
+        }
+        
+        // Simplified AQI calculation
+        function calculateAQI(concentration, parameter) {
+            if (parameter === 'pm25') {
+                if (concentration <= 12) return (concentration / 12) * 50;
+                if (concentration <= 35.4) return 50 + ((concentration - 12) / (35.4 - 12)) * 50;
+                if (concentration <= 55.4) return 100 + ((concentration - 35.4) / (55.4 - 35.4)) * 50;
+                if (concentration <= 150.4) return 150 + ((concentration - 55.4) / (150.4 - 55.4)) * 50;
+                if (concentration <= 250.4) return 200 + ((concentration - 150.4) / (250.4 - 150.4)) * 100;
+                return 300 + ((concentration - 250.4) / (350.4 - 250.4)) * 100;
+            }
+            if (parameter === 'pm10') {
+                if (concentration <= 54) return (concentration / 54) * 50;
+                if (concentration <= 154) return 50 + ((concentration - 54) / (154 - 54)) * 50;
+                if (concentration <= 254) return 100 + ((concentration - 154) / (254 - 154)) * 50;
+                if (concentration <= 354) return 150 + ((concentration - 254) / (354 - 254)) * 50;
+                if (concentration <= 424) return 200 + ((concentration - 354) / (424 - 354)) * 100;
+                return 300 + ((concentration - 424) / (504 - 424)) * 100;
+            }
+            return 50; // Default
+        }
+        
+        // Update health recommendations for live AQI page
+        function updateLiveHealthRecommendations(aqi) {
+            const container = document.getElementById('liveHealthRecs');
+            if (!container) return;
+            
+            const recommendations = generateHealthRecommendations(aqi);
+            container.innerHTML = '';
+            
+            recommendations.forEach(rec => {
+                const recElement = document.createElement('div');
+                recElement.className = 'flex items-start space-x-3 p-3 bg-white dark:bg-gray-700 rounded-lg';
+                recElement.innerHTML = `
+                    <div class="text-2xl">${rec.icon}</div>
+                    <div class="flex-1">
+                        <h5 class="font-semibold text-gray-800 dark:text-white mb-1">${rec.title}</h5>
+                        <p class="text-sm ${rec.color}">${rec.message}</p>
+                    </div>
+                `;
+                container.appendChild(recElement);
+            });
+        }
+        
+        // Refresh AQI data
+        document.getElementById('refreshAqi').addEventListener('click', fetchRealTimeAqiData);
+        document.getElementById('retryAqi').addEventListener('click', fetchRealTimeAqiData);
+
+        function getAqiInfo(aqi) {
+               if (aqi <= 50) return { level: 'Good', color: 'bg-green-500 text-white' };
+               if (aqi <= 100) return { level: 'Moderate', color: 'bg-yellow-500 text-white' };
+               if (aqi <= 150) return { level: 'Unhealthy for Sensitive Groups', color: 'bg-orange-500 text-white' };
+               if (aqi <= 200) return { level: 'Unhealthy', color: 'bg-red-500 text-white' };
+               if (aqi <= 300) return { level: 'Very Unhealthy', color: 'bg-purple-500 text-white' };
+               return { level: 'Hazardous', color: 'bg-red-800 text-white' };
+        }
+
+        async function fetchLiveAqiData() {
+               document.getElementById('aqiPageLoading').style.display = 'block';
+               document.getElementById('aqiPageData').classList.add('hidden');
+               document.getElementById('aqiPageError').classList.add('hidden');
+
+               if (WAQI_TOKEN === "YOUR_WAQI_API_TOKEN_HERE") {
+                   document.getElementById('aqiPageLoading').style.display = 'none';
+                   document.getElementById('aqiPageError').classList.remove('hidden');
+                   return;
+               }
+               try {
+                   const response = await fetch(`https://api.aqicn.org/feed/indore/?token=${WAQI_TOKEN}`);
+                   if (!response.ok) throw new Error('Network error');
+                   const result = await response.json();
+                   if (result.status !== 'ok') throw new Error(result.data);
+                   
+                   const data = result.data;
+                   const aqiInfo = getAqiInfo(data.aqi);
+                   const pageData = document.getElementById('aqiPageData');
+
+                   pageData.querySelector('#mainAqiValue').textContent = data.aqi;
+                   const levelEl = pageData.querySelector('#mainAqiLevel');
+                   levelEl.textContent = aqiInfo.level;
+                   levelEl.className = `text-xl font-semibold px-4 py-1 rounded-full inline-block mt-2 ${aqiInfo.color}`;
+                   pageData.querySelector('#aqiPm25').textContent = data.iaqi.pm25?.v || '--';
+                   pageData.querySelector('#aqiPm10').textContent = data.iaqi.pm10?.v || '--';
+                   pageData.querySelector('#aqiO3').textContent = data.iaqi.o3?.v || '--';
+                   pageData.querySelector('#aqiNo2').textContent = data.iaqi.no2?.v || '--';
+                   pageData.querySelector('#aqiSo2').textContent = data.iaqi.so2?.v || '--';
+                   pageData.querySelector('#aqiCo').textContent = data.iaqi.co?.v || '--';
+                   pageData.querySelector('#aqiStation').textContent = `Station: ${data.city.name}`;
+
+                   document.getElementById('aqiPageLoading').style.display = 'none';
+                   pageData.classList.remove('hidden');
+               } catch (error) {
+                   console.error("AQI Fetch Error:", error);
+                   document.getElementById('aqiPageLoading').style.display = 'none';
+                   document.getElementById('aqiPageError').classList.remove('hidden');
+               }
+        }
+
+        function generateAreaForecasts() {
+            const forecastContainer = document.getElementById('areaForecasts');
+            forecastContainer.innerHTML = '';
+            aqiData.forEach(area => {
+                const change = Math.floor(Math.random() * 21) - 10;
+                const predictedAqi = Math.max(0, area.aqi + change);
+                const changeIcon = change < 0 ? '↓' : '↑';
+                const changeColor = change < 0 ? 'text-green-500' : 'text-red-500';
+
+                const forecastEl = document.createElement('div');
+                forecastEl.className = 'flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg';
+                forecastEl.innerHTML = `
+                    <div>
+                        <div class="font-medium text-gray-800 dark:text-white">${area.area}</div>
+                        <div class="text-sm text-gray-600 dark:text-gray-400">Current AQI: ${area.aqi}</div>
+                    </div>
+                    <div class="text-right">
+                        <div class="font-semibold text-gray-800 dark:text-white">${predictedAqi} AQI</div>
+                        <div class="text-sm ${changeColor}">${changeIcon} ${Math.abs(change)}</div>
+                    </div>`;
+                forecastContainer.appendChild(forecastEl);
+            });
+        }
+
+        // --- SECTION 2: Gemini AI Chatbot Logic ---
+
+        const pathNetraToggleChat = document.getElementById('pathNetraToggle');
+        const pathNetraWindow = document.getElementById('pathNetraWindow');
+        const pathNetraForm = document.getElementById('pathNetraForm');
+        const pathNetraInput = document.getElementById('pathNetraInput');
+        const pathNetraMessages = document.getElementById('pathNetraMessages');
+
+        // IMPORTANT: Replace with your actual API Key.
+        // For security, it's best to handle API keys on a server, not in client-side code.
+        const API_KEY = "YOUR_GOOGLE_AI_API_KEY_HERE";
+
+        if (API_KEY === "YOUR_GOOGLE_AI_API_KEY_HERE") {
+            addAiMessage("⛔️ **Important:** Please add a valid Google AI API Key in the script to activate the chat.");
+        }
+
+        const genAI = new GoogleGenerativeAI(API_KEY);
+        const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+        const chat = model.startChat({
+            history: [
+                { role: "user", parts: [{ text: "You are PathNetra, an AI assistant for the PathNetra pollution navigation app. You provide concise, helpful answers about pollution, health, and Indore." }] },
+                { role: "model", parts: [{ text: "Understood! I am PathNetra, ready to assist with pollution and navigation queries for Indore." }] },
+            ],
+            generationConfig: { maxOutputTokens: 250 },
+        });
+
+        pathNetraToggleChat.addEventListener('click', () => {
+            pathNetraWindow.classList.toggle('scale-95');
+            pathNetraWindow.classList.toggle('opacity-0');
+            pathNetraWindow.classList.toggle('pointer-events-none');
+            pathNetraWindow.classList.toggle('scale-100');
+        });
+
+        pathNetraForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const userInput = pathNetraInput.value.trim();
+            if (!userInput) return;
+            addUserMessage(userInput);
+            pathNetraInput.value = '';
+            await getGeminiResponse(userInput);
+        });
+
+        function addUserMessage(message) {
+            pathNetraMessages.innerHTML += `<div class="flex justify-end mb-4"><div class="inline-block bg-blue-500 text-white rounded-lg p-3 max-w-xs">${message}</div></div>`;
+            pathNetraMessages.scrollTop = pathNetraMessages.scrollHeight;
+        }
+
+        function addAiMessage(message) {
+            const aiMessageContainer = document.createElement('div');
+            aiMessageContainer.className = 'mb-4';
+            aiMessageContainer.innerHTML = `<div class="inline-block bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-lg p-3 max-w-xs">${message}</div>`;
+            pathNetraMessages.appendChild(aiMessageContainer);
+            pathNetraMessages.scrollTop = pathNetraMessages.scrollHeight;
+            return aiMessageContainer.firstElementChild;
+        }
+        
+        async function getGeminiResponse(userInput) {
+            const thinkingBubble = addAiMessage("Thinking...");
+            try {
+                const result = await chat.sendMessageStream(userInput);
+                let text = '';
+                for await (const chunk of result.stream) {
+                    text += chunk.text();
+                    thinkingBubble.innerHTML = text.replace(/\n/g, '<br>');
+                    pathNetraMessages.scrollTop = pathNetraMessages.scrollHeight;
+                }
+            } catch (error) {
+                console.error('Gemini API Error:', error);
+                thinkingBubble.innerHTML = "Sorry, something went wrong. Please check your API Key and ensure it is valid.";
+            }
+        }
+    </script>
+</body>
+</html>
